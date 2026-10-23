@@ -121,6 +121,11 @@ fun ChannelListScreen(
                     if (event.type == KeyEventType.KeyDown) numberEntry.type(digit)
                     return@onPreviewKeyEvent true
                 }
+                // Guide opens the guide grid; consumed so the TV does not show its own message.
+                if (event.key == Key.Guide) {
+                    if (event.type == KeyEventType.KeyDown) onOpenGuide()
+                    return@onPreviewKeyEvent true
+                }
                 val ok = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
                 if (ok && numberEntry.active) {
                     if (event.type == KeyEventType.KeyUp) numberEntry.commit()

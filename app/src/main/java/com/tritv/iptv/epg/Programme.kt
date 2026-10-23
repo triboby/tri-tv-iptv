@@ -15,20 +15,23 @@ data class Programme(
 }
 
 /**
- * Resolves overlaps in a list sorted by start time in favour of the programme that started first:
- * a later one starts when it ends, or is dropped if it ends by then. Guides seen so far get the
- * earlier entry right (e.g. 新花路放 21:10–22:17 is what airs, not 综艺喜乐汇 listed from 21:23).
+ * Resolves overlaps in a list sorted by start time. A programme that falls wholly within an
+ * earlier one is dropped, then each one ends no later than the next starts. Guides seen so far
+ * list stray entries this way: CCTV-3 aired 新花路放 21:10–22:17 while the guide also had
+ * 综艺喜乐汇 21:23–22:17 and an earlier programme running on to 21:23.
  */
 fun List<Programme>.withoutOverlaps(): List<Programme> {
-    val result = ArrayList<Programme>(size)
+    val kept = ArrayList<Programme>(size)
+    var latestStop = Long.MIN_VALUE
     for (p in this) {
-        val last = result.lastOrNull()
-        when {
-            last == null || p.start >= last.stop -> result += p
-            p.stop > last.stop -> result += p.copy(start = last.stop)
-        }
+        if (p.stop <= latestStop) continue
+        kept += p
+        latestStop = p.stop
     }
-    return result
+    return kept.mapIndexed { i, p ->
+        val next = kept.getOrNull(i + 1)
+        if (next != null && next.start < p.stop) p.copy(stop = next.start) else p
+    }
 }
 
 /** The programme on at [now] and the one after it, from a list sorted by start time. */
