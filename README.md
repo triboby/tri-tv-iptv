@@ -29,3 +29,9 @@
 adb connect <电视IP>
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## 界面风格与第三方资源
+
+界面参考了 [CleanYourTV](https://github.com/Gathin23/cleanyourtv) 启动器（MIT）的 tvOS 式深色玻璃风格：近黑底色加柔和环境光、半透明“毛玻璃”控件、聚焦时变为纯白并略微放大。颜色与组件在 `ui/Theme.kt`、`ui/Components.kt` 中重新实现，未复制其代码。
+
+拉丁字母和数字使用 [Outfit](https://github.com/Outfitio/Outfit-Fonts) 字体（`app/src/main/res/font/outfit.ttf`），以 SIL Open Font License 1.1 授权，许可证见 [`app/FONT-LICENSE-OFL.txt`](app/FONT-LICENSE-OFL.txt)。中文使用系统字体。

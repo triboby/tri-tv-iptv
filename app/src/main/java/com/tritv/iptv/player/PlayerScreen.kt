@@ -5,14 +5,19 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +38,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -46,6 +52,9 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tritv.iptv.data.Channel
+import com.tritv.iptv.ui.EyebrowStyle
+import com.tritv.iptv.ui.TriTvColors
+import com.tritv.iptv.ui.glassPanel
 import kotlinx.coroutines.delay
 
 private const val DEFAULT_USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
@@ -167,42 +176,58 @@ fun PlayerScreen(
 
         AnimatedVisibility(
             visible = showInfo || error != null,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = fadeIn(tween(420)) + slideInVertically(tween(420)) { it / 5 },
+            exit = fadeOut(tween(220)),
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(48.dp),
         ) {
-            Column(
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .background(Color(0xCC000000), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .glassPanel()
+                    .padding(horizontal = 28.dp, vertical = 18.dp),
             ) {
                 Text(
-                    "%03d  %s".format(channelNumber, channel.name),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
+                    "%03d".format(channelNumber),
+                    style = MaterialTheme.typography.displaySmall,
+                    color = TriTvColors.Text,
                 )
-                val line = if (channel.sources.size > 1) {
-                    "线路 ${attempt.sourceIndex + 1}/${channel.sources.size}"
-                } else {
-                    null
+                Box(
+                    Modifier
+                        .padding(horizontal = 20.dp)
+                        .width(1.dp)
+                        .height(48.dp)
+                        .background(TriTvColors.GlassStroke),
+                )
+                Column {
+                    Text(
+                        channel.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = TriTvColors.Text,
+                    )
+                    val line = if (channel.sources.size > 1) {
+                        "线路 ${attempt.sourceIndex + 1}/${channel.sources.size}"
+                    } else {
+                        null
+                    }
+                    val status = error ?: listOfNotNull(
+                        channel.group,
+                        line,
+                        "缓冲中…".takeIf { buffering },
+                    ).joinToString("  ·  ")
+                    Text(
+                        status,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (error != null) TriTvColors.Error else TriTvColors.TextMid,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "▲▼ 换台   ◀▶ 换线路   OK 信息   返回 频道列表",
+                        style = EyebrowStyle.copy(fontSize = 11.sp),
+                        color = TriTvColors.TextDim,
+                    )
                 }
-                val status = error ?: listOfNotNull(
-                    channel.group,
-                    line,
-                    "缓冲中…".takeIf { buffering },
-                ).joinToString("  ·  ")
-                Text(
-                    status,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (error != null) MaterialTheme.colorScheme.error else Color.LightGray,
-                )
-                Text(
-                    "▲▼ 换台  ·  ◀▶ 换线路  ·  OK 显示/隐藏信息  ·  返回 频道列表",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray,
-                )
             }
         }
     }
