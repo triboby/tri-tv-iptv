@@ -72,20 +72,12 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(TriTvColors.Black),
     ) {
-        TopBar {
-            if (canGoBack) {
-                KeyCap("返回")
-                Text("频道列表", style = TriTvType.Small, color = TriTvColors.TextMuted)
-                Spacer(Modifier.width(12.dp))
-            }
-        }
-
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 20.dp, bottom = 18.dp),
+                .padding(top = 40.dp, bottom = 18.dp),
         ) {
             Text("直播源", style = TriTvType.Display)
             Text("播放列表必填；节目单可留空，留空时用播放列表里自带的地址。", style = TriTvType.Body, color = TriTvColors.TextMuted)
@@ -146,13 +138,16 @@ fun SettingsScreen(
                         enabled = state.loading || state.imported || state.playlistUrl.isNotBlank(),
                         busyText = if (state.loading) "导入中…" else null,
                         doneText = if (state.imported) "已导入" else null,
-                        modifier = Modifier
-                            .width(148.dp)
-                            .focusRequester(buttonFocus),
+                        width = 148.dp,
+                        modifier = Modifier.focusRequester(buttonFocus),
                     )
                     if (canGoBack) SecondaryPill("取消", onClick = onCancel)
                     Spacer(Modifier.weight(1f))
-                    Text("遥控器 OK 键弹出输入法", style = TriTvType.Small, color = TriTvColors.TextDim)
+                    Text(
+                        if (canGoBack) "OK 键弹出输入法 · 返回键回到频道列表" else "OK 键弹出输入法",
+                        style = TriTvType.Caption,
+                        color = TriTvColors.TextMuted,
+                    )
                 }
             }
 

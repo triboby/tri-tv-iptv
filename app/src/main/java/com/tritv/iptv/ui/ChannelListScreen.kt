@@ -31,17 +31,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
@@ -137,8 +134,9 @@ fun ChannelListScreen(
                     if (event.type == KeyEventType.KeyDown) numberEntry.type(digit)
                     return@onPreviewKeyEvent true
                 }
-                // Guide opens the guide grid; consumed so the TV does not show its own message.
-                if (event.key == Key.Guide) {
+                // ≡ (on every BRAVIA remote) or Guide opens the guide grid; consumed so the TV does
+                // not show its own message. Favourites are in the long-press OK menu.
+                if ((event.key == Key.Menu && moving == null) || event.key == Key.Guide) {
                     if (event.type == KeyEventType.KeyDown) onOpenGuide()
                     return@onPreviewKeyEvent true
                 }
@@ -155,7 +153,6 @@ fun ChannelListScreen(
                 .fillMaxSize()
                 .background(TriTvColors.Black),
         ) {
-            TopBar()
             SubNav(state, onOpenSettings, onOpenGuide)
 
             if (state.channels.isEmpty()) {
@@ -263,15 +260,6 @@ fun ChannelListScreen(
                             modifier = Modifier
                                 .arrive(pos + 1, entrance)
                                 .onFocusChanged { if (it.isFocused) focusedIndex = index }
-                                .onKeyEvent { event ->
-                                    // Menu adds or removes the focused channel from the favourites.
-                                    if (event.key == Key.Menu && moving == null) {
-                                        if (event.type == KeyEventType.KeyUp) onToggleFavorite(channel.stableKey)
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
                                 .then(if (index == state.focusIndex) Modifier.focusRequester(focusRequester) else Modifier),
                         )
                     }
@@ -425,19 +413,8 @@ private fun MissingFavoriteRow(key: String, onLongClick: () -> Unit) {
 /** Frosted second bar: page name on the left, playlist stats and the guide and source buttons on the right. */
 @Composable
 private fun SubNav(state: UiState, onOpenSettings: () -> Unit, onOpenGuide: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .background(TriTvColors.Ink.copy(alpha = 0.8f))
-            .drawBehind {
-                drawLine(TriTvColors.Hairline, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
-            }
-            .padding(horizontal = ScreenMargin),
-    ) {
-        Text(if (state.favoritesSelected) "收藏" else "频道", style = TriTvType.Tagline)
+    TitleBar {
+        TitleWithMark(if (state.favoritesSelected) "收藏" else "频道")
         if (state.movingFavorite != null) {
             Box(
                 contentAlignment = Alignment.Center,
@@ -471,6 +448,7 @@ private fun SubNav(state: UiState, onOpenSettings: () -> Unit, onOpenGuide: () -
             UtilityButton(onClick = onOpenGuide) {
                 GuideIcon()
                 Text("节目表", style = TriTvType.Caption)
+                KeyCap("≡")
             }
         }
         UtilityButton(onClick = onOpenSettings) {
@@ -490,7 +468,7 @@ private fun Hero(state: UiState, focusedIndex: Int, now: Long) {
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
         modifier = Modifier
             .fillMaxWidth()
-            .height(148.dp)
+            .height(144.dp)
             .background(TriTvColors.Black)
             .padding(horizontal = ScreenMargin),
     ) {
@@ -578,9 +556,6 @@ private fun ChannelRow(
                 modifier = Modifier.weight(1f),
             )
         }
-        if (!state.favoritesSelected && state.selectedGroup == null && channel.group != null) {
-            GroupCaption(channel.group, TriTvType.Caption, dim)
-        }
         if (channel.sources.size > 1) {
             Text("${channel.sources.size} 线", style = TriTvType.Caption, color = dim)
         }
@@ -658,7 +633,7 @@ private fun ListSkeleton() {
             verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(148.dp)
+                .height(144.dp)
                 .background(TriTvColors.Black),
         ) {
             SkeletonBar(260.dp, 34.dp, bar, Radius.Small)

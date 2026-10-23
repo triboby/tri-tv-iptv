@@ -337,8 +337,8 @@ fun PlayerScreen(
                     Key.DirectionLeft -> { switchSource(-1); true }
                     Key.DirectionRight -> { switchSource(1); true }
                     Key.Info -> { showInfo = !showInfo; true }
-                    Key.Menu -> { toggleFavorite(); true }
-                    Key.Guide -> { onOpenGuide(); true }
+                    // ≡ is on every BRAVIA remote; few have a Guide key.
+                    Key.Menu, Key.Guide -> { onOpenGuide(); true }
                     else -> false
                 }
             }
@@ -530,8 +530,8 @@ fun PlayerScreen(
                     KeyHint("▲▼", "换台")
                     KeyHint("◀▶", "换线路")
                     KeyHint("OK", "信息")
-                    KeyHint("菜单", if (isFavorite) "取消收藏" else "收藏")
-                    if (programmes.isNotEmpty()) KeyHint("指南", "节目表")
+                    KeyHint("长按 OK", if (isFavorite) "取消收藏" else "收藏")
+                    if (programmes.isNotEmpty()) KeyHint("≡", "节目表")
                     KeyHint("返回", "列表")
                 }
             }
