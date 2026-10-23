@@ -62,4 +62,46 @@ class M3uParserTest {
         val ch = M3uParser.parse("#EXTINF:-1 tvg-name=\"Fallback\",\nhttp://x/y").single()
         assertEquals("Fallback", ch.name)
     }
+
+    @Test
+    fun parsesAggregatorStylePlaylist() {
+        // Trimmed shape of a real aggregated source: emoji groups, a fake
+        // "update time" entry, repeated channels, catchup attrs, UA options.
+        val text = """
+            #EXTM3U x-tvg-url="http://127.0.0.1:8000/epg/epg.gz"
+            #EXTINF:-1 tvg-id="CCTV-1" tvg-name="CCTV-1" tvg-logo="https://logo.example/CCTV-1.png" group-title="🕘️更新时间",2026-10-23 13:31:43
+            http://a.example/hls/cctv1hd.m3u8
+            #EXTINF:-1 tvg-id="CCTV-1" tvg-name="CCTV-1" tvg-logo="https://logo.example/CCTV1.png" group-title="📺央视频道",CCTV-1
+            http://a.example/hls/cctv1hd.m3u8
+            #EXTINF:-1 tvg-id="CCTV-1" tvg-name="CCTV-1" tvg-logo="https://logo.example/CCTV1.png" group-title="📺央视频道",CCTV-1
+            http://b.example/PLTV/88888888/224/3221226559/index.m3u8
+            #EXTINF:-1 tvg-id="东方卫视" tvg-name="东方卫视" tvg-logo="https://logo.example/东方卫视.png" group-title="📡卫视频道",东方卫视
+            #EXTVLCOPT:http-user-agent=AptvPlayer-UA
+            http://c.example/155/3/video.m3u8
+            #EXTINF:-1 tvg-id="凤凰资讯" tvg-name="凤凰资讯" tvg-logo="https://logo.example/fhzx.png" group-title="🇭🇰港澳台" catchup="append" catchup-source="?playseek=${'$'}{(b)yyyyMMddHHmmss}-${'$'}{(e)yyyyMMddHHmmss}",凤凰资讯
+            #EXTVLCOPT:http-user-agent=iPhone
+            http://d.example/phenix.php?id=fhzx
+            #EXTINF:-1 tvg-id="翡翠台" tvg-name="翡翠台" tvg-logo="https://logo.example/tvb.png" group-title="🇭🇰港澳台",翡翠台
+            https://e.example/2b657a181daa345025199e7d.ctv
+        """.trimIndent()
+
+        val channels = M3uParser.parse(text)
+        assertEquals(6, channels.size)
+        assertEquals("2026-10-23 13:31:43", channels[0].name)
+        assertEquals("🕘️更新时间", channels[0].group)
+        assertEquals(listOf("CCTV-1", "CCTV-1"), channels.subList(1, 3).map { it.name })
+        assertEquals("📺央视频道", channels[1].group)
+
+        val dongfang = channels[3]
+        assertEquals("东方卫视", dongfang.name)
+        assertEquals("AptvPlayer-UA", dongfang.userAgent)
+
+        val fenghuang = channels[4]
+        assertEquals("凤凰资讯", fenghuang.name)
+        assertEquals("🇭🇰港澳台", fenghuang.group)
+        assertEquals("iPhone", fenghuang.userAgent)
+        assertEquals("http://d.example/phenix.php?id=fhzx", fenghuang.url)
+
+        assertNull(channels[5].userAgent)
+    }
 }
