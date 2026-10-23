@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tritv.iptv.data.Channel
 import com.tritv.iptv.data.PlaylistRepository
+import com.tritv.iptv.data.loadErrorMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,10 @@ data class UiState(
     val playingIndex: Int? = null,
     /** Index into [channels] the list should focus, e.g. after leaving the player. */
     val focusIndex: Int = 0,
+    /** Whether the playlist source page is shown instead of the channel list. */
+    val showSettings: Boolean = false,
+    /** When the current channel list was last loaded, for the source page's status card. */
+    val loadedAt: Long? = null,
 ) {
     /** Indices into [channels] shown under [selectedGroup]; channel switching stays within them. */
     val visibleIndices: List<Int>
@@ -35,7 +40,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = PlaylistRepository(app)
 
-    private val _state = MutableStateFlow(UiState(playlistUrl = repo.savedUrl.orEmpty()))
+    private val _state = MutableStateFlow(
+        UiState(playlistUrl = repo.savedUrl.orEmpty(), showSettings = repo.savedUrl.isNullOrBlank()),
+    )
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
@@ -61,13 +68,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             selectedGroup = null,
                             focusIndex = last,
                             error = if (channels.isEmpty()) "播放列表中没有频道" else null,
+                            loadedAt = System.currentTimeMillis(),
+                            // Back to the list once there is something to show.
+                            showSettings = it.showSettings && channels.isEmpty(),
                         )
                     }
                 }
                 .onFailure { e ->
-                    _state.update { it.copy(loading = false, error = "加载失败：${e.message ?: e.javaClass.simpleName}") }
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            error = loadErrorMessage(e),
+                            // Nothing to browse, so show the source page where the address can be fixed.
+                            showSettings = it.showSettings || it.channels.isEmpty(),
+                        )
+                    }
                 }
         }
+    }
+
+    fun openSettings() = _state.update { it.copy(showSettings = true, error = null) }
+
+    /** Leaves the source page; stays on it while there are no channels to go back to. */
+    fun closeSettings(): Boolean {
+        if (_state.value.channels.isEmpty()) return false
+        _state.update { it.copy(showSettings = false, playlistUrl = repo.savedUrl ?: it.playlistUrl, error = null) }
+        return true
     }
 
     fun selectGroup(group: String?) = _state.update { s ->

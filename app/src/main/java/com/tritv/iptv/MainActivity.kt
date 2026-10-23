@@ -2,12 +2,14 @@ package com.tritv.iptv
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tritv.iptv.player.PlayerScreen
 import com.tritv.iptv.ui.ChannelListScreen
+import com.tritv.iptv.ui.SettingsScreen
 import com.tritv.iptv.ui.TriTvTheme
 
 class MainActivity : ComponentActivity() {
@@ -27,13 +29,20 @@ class MainActivity : ComponentActivity() {
                         onZap = viewModel::zap,
                         onExit = viewModel::stop,
                     )
-                } else {
-                    ChannelListScreen(
+                } else if (state.showSettings) {
+                    BackHandler(enabled = state.channels.isNotEmpty()) { viewModel.closeSettings() }
+                    SettingsScreen(
                         state = state,
                         onUrlChange = viewModel::onUrlChange,
                         onLoad = { viewModel.loadPlaylist() },
+                        onCancel = { viewModel.closeSettings() },
+                    )
+                } else {
+                    ChannelListScreen(
+                        state = state,
                         onPlay = viewModel::play,
                         onSelectGroup = viewModel::selectGroup,
+                        onOpenSettings = viewModel::openSettings,
                     )
                 }
             }
