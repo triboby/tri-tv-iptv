@@ -1,6 +1,8 @@
 package com.tritv.iptv.data
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +29,7 @@ class LineRepository(context: Context) {
 
     private val statPrefs = context.getSharedPreferences("line_stats", Context.MODE_PRIVATE)
     private val pickPrefs = context.getSharedPreferences("line_picks", Context.MODE_PRIVATE)
+    private val connectivity = context.getSystemService(ConnectivityManager::class.java)
 
     private val _stats = MutableStateFlow(
         statPrefs.all.mapNotNull { (url, v) -> LineRanker.decode(v as? String)?.let { url to it } }.toMap(),
@@ -62,7 +65,7 @@ class LineRepository(context: Context) {
     /** Records how real playback of [entry] went. */
     fun report(entry: PlaylistEntry, ok: Boolean) {
         Log.i(TAG, (if (ok) "played " else "play failed ") + entry.url)
-        record(entry.url, ok, latency = null)
+        if (ok || online()) record(entry.url, ok, latency = null)
     }
 
     /** Forgets lines that are no longer in the playlist. */
@@ -104,10 +107,18 @@ class LineRepository(context: Context) {
         if (!inFlight.add(entry.url)) return
         try {
             val latency = probe(entry)
-            record(entry.url, ok = latency != null, latency = latency)
+            // With the TV itself offline (e.g. just after standby) every line fails; that says
+            // nothing about the lines, so it must not push working ones to the back.
+            if (latency != null || online()) record(entry.url, ok = latency != null, latency = latency)
         } finally {
             inFlight.remove(entry.url)
         }
+    }
+
+    private fun online(): Boolean {
+        val cm = connectivity ?: return true
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private fun record(url: String, ok: Boolean, latency: Int?) {

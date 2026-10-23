@@ -39,6 +39,17 @@ class LineRankerTest {
     }
 
     @Test
+    fun failedLinesThatWorkedRecentlyComeFirst() {
+        val stats = mapOf(
+            "a" to LineStat(failAt = 9),
+            "b" to LineStat(okAt = 3, failAt = 9),
+            "c" to LineStat(okAt = 7, failAt = 9),
+            "d" to LineStat(failAt = 9),
+        )
+        assertEquals(listOf(2, 1, 0, 3), LineRanker.order(urls, stats, picked = null))
+    }
+
+    @Test
     fun latencyIsSmoothed() {
         val s = LineStat().succeeded(1, 100).succeeded(2, 300)
         assertEquals(200, s.latencyMs)

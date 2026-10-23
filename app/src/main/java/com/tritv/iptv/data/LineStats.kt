@@ -34,7 +34,7 @@ object LineRanker {
     /**
      * Indices into [urls] in the order to try them: the line the viewer picked (unless it has
      * since failed), then working lines fastest first, then lines not checked yet, then lines
-     * whose last check failed. Ties keep the playlist order.
+     * whose last check failed, those that worked most recently first. Ties keep the playlist order.
      */
     fun order(urls: List<String>, stats: Map<String, LineStat>, picked: String?): List<Int> {
         fun tier(i: Int): Int {
@@ -47,7 +47,13 @@ object LineRanker {
             }
         }
         return urls.indices.sortedWith(
-            compareBy<Int>({ tier(it) }, { stats[urls[it]]?.takeIf { s -> !s.failing }?.latencyMs ?: Int.MAX_VALUE }, { it }),
+            compareBy<Int>(
+                { tier(it) },
+                { stats[urls[it]]?.takeIf { s -> !s.failing }?.latencyMs ?: Int.MAX_VALUE },
+                // Among failed lines; zero for the rest.
+                { -(stats[urls[it]]?.takeIf { s -> s.failing }?.okAt ?: 0L) },
+                { it },
+            ),
         )
     }
 

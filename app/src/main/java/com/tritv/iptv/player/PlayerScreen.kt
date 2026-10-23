@@ -160,7 +160,7 @@ fun PlayerScreen(
                 onLineResult(lines[attempts[attemptIndex].sourceIndex], false)
                 val next = nextAttempt(attemptIndex, attempts.size, silentLine)
                 if (next == null) {
-                    error = "所有线路都无法播放：${e.errorCodeName}"
+                    error = "所有线路都无法播放：" + playbackErrorReason(e.errorCode)
                 } else {
                     stayOnLine = next == silentLine
                     attemptIndex = next
@@ -418,7 +418,7 @@ fun PlayerScreen(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             val err = error
                             if (err != null) {
-                                Text(err, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 1)
+                                Text(err, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             } else {
                                 channel.group?.let { GroupCaption(it, TriTvType.Caption, TriTvColors.TextMuted) }
                                 if (lines.size > 1) {
