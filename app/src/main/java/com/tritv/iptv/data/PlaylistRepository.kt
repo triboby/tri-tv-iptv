@@ -6,6 +6,9 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
+/** A loaded playlist: its channels and the guide address its header names, if any. */
+data class Playlist(val channels: List<Channel>, val guideUrl: String?)
+
 class PlaylistRepository(context: Context) {
 
     private val prefs = context.getSharedPreferences("playlist", Context.MODE_PRIVATE)
@@ -19,7 +22,17 @@ class PlaylistRepository(context: Context) {
         get() = prefs.getString(KEY_LAST_CHANNEL, null)
         set(value) = prefs.edit().putString(KEY_LAST_CHANNEL, value).apply()
 
-    suspend fun load(url: String): List<Channel> = withContext(Dispatchers.IO) {
+    /** Guide (XMLTV) address the viewer typed; null to use the one in the playlist header. */
+    var guideUrl: String?
+        get() = prefs.getString(KEY_GUIDE_URL, null)
+        set(value) = prefs.edit().putString(KEY_GUIDE_URL, value).apply()
+
+    /** Favourite [Channel.stableKey]s in the viewer's order. */
+    var favorites: List<String>
+        get() = FavoriteList.decode(prefs.getString(KEY_FAVORITES, null))
+        set(value) = prefs.edit().putString(KEY_FAVORITES, FavoriteList.encode(value)).apply()
+
+    suspend fun load(url: String): Playlist = withContext(Dispatchers.IO) {
         val conn = URL(url).openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 15_000
@@ -29,7 +42,7 @@ class PlaylistRepository(context: Context) {
             val code = conn.responseCode
             if (code !in 200..299) throw HttpStatusException(code)
             val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            ChannelMerger.merge(M3uParser.parse(text))
+            Playlist(ChannelMerger.merge(M3uParser.parse(text)), M3uParser.guideUrl(text))
         } finally {
             conn.disconnect()
         }
@@ -38,5 +51,7 @@ class PlaylistRepository(context: Context) {
     private companion object {
         const val KEY_URL = "url"
         const val KEY_LAST_CHANNEL = "last_channel_key"
+        const val KEY_GUIDE_URL = "guide_url"
+        const val KEY_FAVORITES = "favorites"
     }
 }

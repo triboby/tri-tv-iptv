@@ -252,6 +252,7 @@ fun UtilityButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @
 fun FocusRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
     selected: Boolean = false,
     shape: Shape = Radius.Row,
     contentPadding: PaddingValues = PaddingValues(start = 12.dp, end = 20.dp),
@@ -261,6 +262,7 @@ fun FocusRow(
     Surface(
         selected = selected,
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier,
         shape = SelectableSurfaceDefaults.shape(shape = shape),
         colors = SelectableSurfaceDefaults.colors(
@@ -315,6 +317,9 @@ private val linkPaths = listOf(
     iconPath("M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"),
 )
 private val rssPaths = listOf(iconPath("M4 11a9 9 0 0 1 9 9"), iconPath("M4 4a16 16 0 0 1 16 16"))
+private val guidePaths = listOf(iconPath("M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"), iconPath("M3 10h18"), iconPath("M9 10v10"))
+private val starPath = iconPath("M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z")
+private val arrowsPaths = listOf(iconPath("M8 9l4-4 4 4"), iconPath("M8 15l4 4 4-4"))
 
 /** A 24-unit line icon drawn with 2-unit round strokes, scaled to [size]. */
 @Composable
@@ -334,6 +339,36 @@ fun LinkIcon(size: Dp = 16.dp, color: Color = LocalContentColor.current) = Strok
 
 @Composable
 fun RssIcon(size: Dp = 16.dp, color: Color = LocalContentColor.current) = StrokeIcon(rssPaths, size, color, Offset(5f, 19f))
+
+/** A table with a header row and a first column: the programme guide. */
+@Composable
+fun GuideIcon(size: Dp = 16.dp, color: Color = LocalContentColor.current) = StrokeIcon(guidePaths, size, color)
+
+/** Up and down chevrons: a favourite that is being moved. */
+@Composable
+fun MoveIcon(size: Dp = 16.dp, color: Color = LocalContentColor.current) = StrokeIcon(arrowsPaths, size, color)
+
+/** Five-point star, filled for a favourite or outlined. */
+@Composable
+fun StarIcon(size: Dp = 14.dp, color: Color = LocalContentColor.current, filled: Boolean = true) {
+    Canvas(Modifier.size(size)) {
+        scale(this.size.minDimension / 24f, pivot = Offset.Zero) {
+            if (filled) drawPath(starPath, color)
+            else drawPath(starPath, color, style = Stroke(width = 2f, join = StrokeJoin.Round))
+        }
+    }
+}
+
+/** 4dp pill track filled to [progress] (0..1) in sky blue. */
+@Composable
+fun ProgressBar(progress: Float, modifier: Modifier = Modifier) {
+    Canvas(modifier.height(4.dp)) {
+        val r = androidx.compose.ui.geometry.CornerRadius(size.height / 2)
+        drawRoundRect(Color(0x29FFFFFF), cornerRadius = r)
+        val w = size.width * progress.coerceIn(0f, 1f)
+        if (w > 0f) drawRoundRect(TriTvColors.SkyBlue, size = androidx.compose.ui.geometry.Size(w, size.height), cornerRadius = r)
+    }
+}
 
 /** Small key-cap label for remote hints ("OK", "返回"). */
 @Composable

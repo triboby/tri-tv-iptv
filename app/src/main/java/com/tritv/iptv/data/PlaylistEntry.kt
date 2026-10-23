@@ -6,6 +6,7 @@ data class PlaylistEntry(
     val group: String? = null,
     val logo: String? = null,
     val tvgId: String? = null,
+    val tvgName: String? = null,
     val userAgent: String? = null,
     val referrer: String? = null,
 )
