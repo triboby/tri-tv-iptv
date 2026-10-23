@@ -204,6 +204,7 @@ private fun ChannelItem(state: UiState, index: Int, onClick: () -> Unit, modifie
                 "%03d".format(index + 1),
                 style = MaterialTheme.typography.titleMedium,
                 color = LocalContentColor.current.copy(alpha = 0.6f),
+                modifier = Modifier.padding(end = 12.dp),
             )
         },
         trailingContent = {
@@ -217,6 +218,7 @@ private fun ChannelItem(state: UiState, index: Int, onClick: () -> Unit, modifie
                     style = MaterialTheme.typography.bodySmall,
                     color = LocalContentColor.current.copy(alpha = 0.6f),
                     maxLines = 1,
+                    modifier = Modifier.padding(start = 16.dp),
                 )
             }
         },
@@ -239,6 +241,7 @@ private fun GroupItem(name: String, count: Int, selected: Boolean, onClick: () -
                 "$count",
                 style = MaterialTheme.typography.labelMedium,
                 color = LocalContentColor.current.copy(alpha = 0.6f),
+                modifier = Modifier.padding(start = 12.dp),
             )
         },
         shape = TriTvListItem.shape(RoundedCornerShape(14.dp)),
