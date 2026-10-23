@@ -26,12 +26,4 @@ class ChannelCategoryTest {
         assertEquals("CCTV-10 科教", ChannelCategory.label("CCTV-10"))
         assertEquals("湖南卫视", ChannelCategory.label("湖南卫视"))
     }
-
-    @Test
-    fun ranksWhiteOnDarkLogosFirst() {
-        val ranked = ChannelMerger.rankLogos(
-            listOf("https://a/CCTV10.png", "https://live.fanmingming.cn/tv/CCTV10.png", "https://a/CCTV10.png"),
-        )
-        assertEquals(listOf("https://live.fanmingming.cn/tv/CCTV10.png", "https://a/CCTV10.png"), ranked)
-    }
 }

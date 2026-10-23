@@ -22,18 +22,11 @@ object ChannelMerger {
             Channel(
                 name = first.name,
                 group = first.group,
-                logos = rankLogos(sources.mapNotNull { it.logo }),
+                logos = sources.mapNotNull { it.logo }.distinct(),
                 sources = sources,
             )
         }
     }
-
-    /**
-     * Distinct logo URLs with the fanmingming set first: its logos are white on transparent, made
-     * for dark screens, while other sets are often dark artwork that vanishes on black.
-     */
-    fun rankLogos(urls: List<String>): List<String> =
-        urls.distinct().sortedBy { if ("fanmingming" in it) 0 else 1 }
 
     fun keyOf(entry: PlaylistEntry): String =
         (entry.tvgId ?: entry.name).replace(separators, "").lowercase()

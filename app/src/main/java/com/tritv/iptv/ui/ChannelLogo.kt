@@ -7,8 +7,9 @@ import android.util.Log
 import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
@@ -16,6 +17,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -34,12 +37,24 @@ object LogoCache {
     private const val TAG = "TriTV-Logos"
     private const val MAX_BYTES = 512 * 1024
 
-    private val memory = object : LruCache<String, ImageBitmap>(16 * 1024 * 1024) {
+    // A playlist's ~90 logos at about 200 KB each once decoded.
+    private val memory = object : LruCache<String, ImageBitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
     }
 
-    // URLs that failed this session, so a dead host is not retried on every scroll.
-    private val failed = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private const val RETRY_AFTER_MS = 10 * 60_000L
+
+    // URL → when it failed, so a broken link is not retried on every focus move.
+    private val failed = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    // Host → when it could not be reached at all (live.fanmingming.cn times out from some
+    // networks): its other logos are skipped for a while instead of each waiting out the timeout.
+    private val deadHosts = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    private fun recent(map: Map<String, Long>, key: String?): Boolean {
+        val at = key?.let { map[it] } ?: return false
+        return System.currentTimeMillis() - at < RETRY_AFTER_MS
+    }
     private val downloads = Semaphore(4)
 
     fun cached(urls: List<String>): ImageBitmap? = urls.firstNotNullOfOrNull { memory.get(it) }
@@ -48,15 +63,22 @@ object LogoCache {
     suspend fun load(context: Context, urls: List<String>): ImageBitmap? {
         for (url in urls) {
             memory.get(url)?.let { return it }
-            if (url in failed) continue
+            if (recent(failed, url) || recent(deadHosts, hostOf(url))) continue
             val bitmap = withContext(Dispatchers.IO) { fromDisk(context, url) ?: download(context, url) }
             if (bitmap != null) {
                 memory.put(url, bitmap)
                 return bitmap
             }
-            failed += url
+            failed[url] = System.currentTimeMillis()
         }
         return null
+    }
+
+    /** Loads all [logoLists] (one per channel) into memory, at most four downloads at a time. */
+    suspend fun preload(context: Context, logoLists: List<List<String>>) = coroutineScope {
+        for (urls in logoLists) {
+            if (urls.isNotEmpty() && cached(urls) == null) launch { load(context, urls) }
+        }
     }
 
     private fun file(context: Context, url: String): File {
@@ -70,7 +92,13 @@ object LogoCache {
         return if (f.exists()) decode(f.readBytes()) else null
     }
 
+    private fun hostOf(url: String): String? = runCatching { URL(url).host }.getOrNull()
+
+    private class HttpStatusException(message: String) : IOException(message)
+
     private suspend fun download(context: Context, url: String): ImageBitmap? = downloads.withPermit {
+        // Another download may have found this host dead while this one waited for a permit.
+        if (recent(deadHosts, hostOf(url))) return@withPermit null
         try {
             val bytes = fetch(url)
             val bitmap = decode(bytes) ?: return@withPermit null
@@ -78,8 +106,13 @@ object LogoCache {
             f.parentFile?.mkdirs()
             f.writeBytes(bytes)
             bitmap
-        } catch (e: IOException) {
+        } catch (e: HttpStatusException) {
             Log.i(TAG, "logo failed: $url ($e)")
+            null
+        } catch (e: IOException) {
+            // Timeout, refused, DNS: the host itself is unreachable, not just this file.
+            hostOf(url)?.let { deadHosts[it] = System.currentTimeMillis() }
+            Log.i(TAG, "logo host unreachable, skipping it: $url ($e)")
             null
         }
     }
@@ -89,24 +122,24 @@ object LogoCache {
         var url = URL(start)
         repeat(4) {
             val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 5_000
-            conn.readTimeout = 8_000
+            conn.connectTimeout = 2_500
+            conn.readTimeout = 4_000
             conn.instanceFollowRedirects = false
             try {
                 when (val code = conn.responseCode) {
                     in 200..299 -> conn.inputStream.use { input ->
                         val bytes = input.readBytes()
-                        if (bytes.size > MAX_BYTES) throw IOException("too large: ${bytes.size}")
+                        if (bytes.size > MAX_BYTES) throw HttpStatusException("too large: ${bytes.size}")
                         return bytes
                     }
-                    in 300..399 -> url = URL(url, conn.getHeaderField("Location") ?: throw IOException("redirect without Location"))
-                    else -> throw IOException("HTTP $code")
+                    in 300..399 -> url = URL(url, conn.getHeaderField("Location") ?: throw HttpStatusException("redirect without Location"))
+                    else -> throw HttpStatusException("HTTP $code")
                 }
             } finally {
                 conn.disconnect()
             }
         }
-        throw IOException("too many redirects")
+        throw HttpStatusException("too many redirects")
     }
 
     // Logos come as large as 640×320; halve those, they are drawn at most ~220 px wide.
@@ -122,14 +155,18 @@ object LogoCache {
     }
 }
 
-/** The channel's logo once one of [urls] has loaded; null while loading or if none loads. */
+/**
+ * The channel's logo once one of [urls] has loaded; null while loading or if none loads. Changing
+ * [urls] drops the previous channel's logo at once rather than showing it until the new one loads.
+ */
 @Composable
 fun rememberLogo(urls: List<String>): ImageBitmap? {
     val context = LocalContext.current.applicationContext
-    val logo by produceState(LogoCache.cached(urls), urls) {
-        if (value == null && urls.isNotEmpty()) value = LogoCache.load(context, urls)
+    val logo = remember(urls) { mutableStateOf(LogoCache.cached(urls)) }
+    LaunchedEffect(urls) {
+        if (logo.value == null && urls.isNotEmpty()) logo.value = LogoCache.load(context, urls)
     }
-    return logo
+    return logo.value
 }
 
 /** A logo scaled to fit its box, left-aligned so it lines up with the text around it. */

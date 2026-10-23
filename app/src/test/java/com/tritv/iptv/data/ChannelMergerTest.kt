@@ -16,12 +16,14 @@ class ChannelMergerTest {
                 entry("CCTV-2", "http://a/2.m3u8", tvgId = "CCTV-2"),
                 entry("CCTV-1", "http://b/1.m3u8", tvgId = "CCTV-1", logo = "http://logo/1.png"),
                 entry("CCTV-1", "http://a/1.m3u8", tvgId = "CCTV-1"),
+                entry("CCTV-1", "http://c/1.m3u8", tvgId = "CCTV-1", logo = "http://logo/1.png"),
+                entry("CCTV-1", "http://d/1.m3u8", tvgId = "CCTV-1", logo = "http://logo2/1.png"),
             ),
         )
 
         assertEquals(listOf("CCTV-1", "CCTV-2"), channels.map { it.name })
-        assertEquals(listOf("http://a/1.m3u8", "http://b/1.m3u8"), channels[0].sources.map { it.url })
-        assertEquals(listOf("http://logo/1.png"), channels[0].logos)
+        assertEquals(listOf("http://a/1.m3u8", "http://b/1.m3u8", "http://c/1.m3u8", "http://d/1.m3u8"), channels[0].sources.map { it.url })
+        assertEquals(listOf("http://logo/1.png", "http://logo2/1.png"), channels[0].logos)
     }
 
     @Test

@@ -41,6 +41,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
@@ -93,6 +94,10 @@ fun ChannelListScreen(
             entrance = false
         }
     }
+
+    // Fetch every channel's logo in the background, so moving focus or zapping shows it at once.
+    val context = LocalContext.current.applicationContext
+    LaunchedEffect(state.channels) { LogoCache.preload(context, state.channels.map { it.logos }) }
 
     BackHandler(enabled = moving != null) { onFinishMove(true) }
 

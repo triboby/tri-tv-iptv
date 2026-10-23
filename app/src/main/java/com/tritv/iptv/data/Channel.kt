@@ -4,7 +4,7 @@ package com.tritv.iptv.data
 data class Channel(
     val name: String,
     val group: String?,
-    /** Logo URLs from all its lines, best first (see [ChannelMerger.rankLogos]). */
+    /** Logo URLs from all its lines in playlist order, tried in turn until one loads. */
     val logos: List<String>,
     val sources: List<PlaylistEntry>,
 ) {
