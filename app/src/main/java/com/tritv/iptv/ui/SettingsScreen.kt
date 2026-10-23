@@ -176,6 +176,8 @@ private fun StatusCard(
     title: String,
     ok: Boolean,
     modifier: Modifier = Modifier,
+    /** Shows a spinner in the check slot until the work finishes. */
+    loading: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     Column(
@@ -187,7 +189,7 @@ private fun StatusCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                if (ok) CheckIcon() else Text("!", style = TriTvType.LabelStrong, color = TriTvColors.Error)
+                if (loading) Spinner(size = 16.dp, stroke = 2.dp) else if (ok) CheckIcon() else Text("!", style = TriTvType.LabelStrong, color = TriTvColors.Error)
             }
             Text(title, style = TriTvType.Label.copy(fontWeight = FontWeight.SemiBold))
         }
@@ -199,7 +201,7 @@ private fun StatusCard(
 
 @Composable
 private fun GuideCard(status: GuideStatus, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
-    StatusCard("节目单", ok = status.error == null && (status.loading || status.matched > 0), modifier = modifier) {
+    StatusCard("节目单", ok = status.error == null && status.matched > 0, loading = status.loading, modifier = modifier) {
         val dim = TriTvColors.TextMuted
         when {
             status.loading -> Text("正在下载并解析…", style = TriTvType.Caption, color = dim)

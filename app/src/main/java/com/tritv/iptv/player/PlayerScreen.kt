@@ -472,9 +472,11 @@ fun PlayerScreen(
                         style = TriTvType.PlayerNumber.tabular(),
                         modifier = Modifier.width(88.dp),
                     )
+                    // The guide makes way for an error, which then gets the full width.
+                    val showGuide = (current != null || next != null) && error == null
                     Column(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = if (current != null || next != null) Modifier.width(260.dp) else Modifier.weight(1f),
+                        modifier = if (showGuide) Modifier.width(300.dp) else Modifier.weight(1f),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(channel.name, style = TriTvType.Tagline, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -492,24 +494,31 @@ fun PlayerScreen(
                                         "线路 ${attempt.sourceIndex + 1}/${lines.size}",
                                         style = TriTvType.Caption,
                                         color = TriTvColors.TextMuted,
+                                        maxLines = 1,
+                                        softWrap = false,
                                     )
                                     // How fast this line answered its last probes.
                                     lineStat?.takeIf { !it.failing }?.latencyMs?.let { ms ->
                                         Dot()
-                                        Text("$ms ms", style = TriTvType.Caption.tabular(), color = TriTvColors.TextMuted)
+                                        Text("$ms ms", style = TriTvType.Caption.tabular(), color = TriTvColors.TextMuted, maxLines = 1, softWrap = false)
                                     }
                                 }
-                                if (buffering) {
+                                // Buffering is shown by the ring in the middle of the picture, not here.
+                                if (noAudio && !buffering) {
                                     Dot()
-                                    Text("缓冲中", style = TriTvType.Caption, color = TriTvColors.SkyBlue)
-                                } else if (noAudio) {
-                                    Dot()
-                                    Text("无声音：音频格式不支持", style = TriTvType.Caption, color = TriTvColors.Error)
+                                    Text(
+                                        "无声音：音频格式不支持",
+                                        style = TriTvType.Caption,
+                                        color = TriTvColors.Error,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
                                 }
                             }
                         }
                     }
-                    if (current != null || next != null) {
+                    if (showGuide) {
                         NowAndNext(current, next, now, Modifier.weight(1f))
                     }
                 }
