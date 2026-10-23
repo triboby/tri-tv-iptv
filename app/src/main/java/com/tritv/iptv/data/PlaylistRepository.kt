@@ -14,7 +14,8 @@ class PlaylistRepository(context: Context) {
         get() = prefs.getString(KEY_URL, null)
         set(value) = prefs.edit().putString(KEY_URL, value).apply()
 
-    var lastChannelUrl: String?
+    /** [Channel.stableKey] of the last played channel. */
+    var lastChannelKey: String?
         get() = prefs.getString(KEY_LAST_CHANNEL, null)
         set(value) = prefs.edit().putString(KEY_LAST_CHANNEL, value).apply()
 
@@ -28,7 +29,7 @@ class PlaylistRepository(context: Context) {
             val code = conn.responseCode
             if (code !in 200..299) error("HTTP $code")
             val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            M3uParser.parse(text)
+            ChannelMerger.merge(M3uParser.parse(text))
         } finally {
             conn.disconnect()
         }
@@ -36,6 +37,6 @@ class PlaylistRepository(context: Context) {
 
     private companion object {
         const val KEY_URL = "url"
-        const val KEY_LAST_CHANNEL = "last_channel"
+        const val KEY_LAST_CHANNEL = "last_channel_key"
     }
 }

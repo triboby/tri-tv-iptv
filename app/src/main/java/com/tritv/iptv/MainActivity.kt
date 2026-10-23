@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
                         onUrlChange = viewModel::onUrlChange,
                         onLoad = { viewModel.loadPlaylist() },
                         onPlay = viewModel::play,
+                        onSelectGroup = viewModel::selectGroup,
                     )
                 }
             }

@@ -14,13 +14,22 @@ import kotlinx.coroutines.launch
 data class UiState(
     val playlistUrl: String = "",
     val channels: List<Channel> = emptyList(),
+    /** Distinct group titles in playlist order. */
+    val groups: List<String> = emptyList(),
+    /** Group shown in the list, or null for all channels. */
+    val selectedGroup: String? = null,
     val loading: Boolean = false,
     val error: String? = null,
     /** Index into [channels] of the channel being played, or null when browsing. */
     val playingIndex: Int? = null,
-    /** Index the channel list should focus, e.g. after leaving the player. */
+    /** Index into [channels] the list should focus, e.g. after leaving the player. */
     val focusIndex: Int = 0,
-)
+) {
+    /** Indices into [channels] shown under [selectedGroup]; channel switching stays within them. */
+    val visibleIndices: List<Int>
+        get() = if (selectedGroup == null) channels.indices.toList()
+        else channels.indices.filter { channels[it].group == selectedGroup }
+}
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -43,11 +52,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.load(trimmed) }
                 .onSuccess { channels ->
                     repo.savedUrl = trimmed
-                    val last = channels.indexOfFirst { it.url == repo.lastChannelUrl }.coerceAtLeast(0)
+                    val last = channels.indexOfFirst { it.stableKey == repo.lastChannelKey }.coerceAtLeast(0)
                     _state.update {
                         it.copy(
                             loading = false,
                             channels = channels,
+                            groups = channels.mapNotNull { c -> c.group }.distinct(),
+                            selectedGroup = null,
                             focusIndex = last,
                             error = if (channels.isEmpty()) "播放列表中没有频道" else null,
                         )
@@ -59,19 +70,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun selectGroup(group: String?) = _state.update { s ->
+        val next = s.copy(selectedGroup = group)
+        next.copy(focusIndex = next.visibleIndices.firstOrNull() ?: 0)
+    }
+
     fun play(index: Int) {
         val channels = _state.value.channels
         if (index !in channels.indices) return
-        repo.lastChannelUrl = channels[index].url
+        repo.lastChannelKey = channels[index].stableKey
         _state.update { it.copy(playingIndex = index, focusIndex = index) }
     }
 
-    /** Moves to the next (+1) or previous (-1) channel, wrapping around the list. */
+    /** Moves to the next (+1) or previous (-1) channel in the current group, wrapping around. */
     fun zap(delta: Int) {
         val s = _state.value
         val current = s.playingIndex ?: return
-        if (s.channels.isEmpty()) return
-        play(Math.floorMod(current + delta, s.channels.size))
+        val visible = s.visibleIndices
+        if (visible.isEmpty()) return
+        val pos = visible.indexOf(current).takeIf { it >= 0 } ?: 0
+        play(visible[Math.floorMod(pos + delta, visible.size)])
     }
 
     fun stop() = _state.update { it.copy(playingIndex = null) }

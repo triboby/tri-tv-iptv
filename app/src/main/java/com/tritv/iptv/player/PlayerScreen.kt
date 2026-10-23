@@ -17,9 +17,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,7 +35,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -63,15 +62,19 @@ fun PlayerScreen(
     val player = remember {
         ExoPlayer.Builder(context).build().apply { playWhenReady = true }
     }
-    var error by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(player) {
+        onDispose { player.release() }
+    }
+
+    val attempts = remember(channel) { playbackAttempts(channel.sources) }
+    var attemptIndex by remember(channel) { mutableIntStateOf(0) }
+    var error by remember(channel) { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(true) }
     var showInfo by remember { mutableStateOf(true) }
-    // Stream URLs without an extension can be HLS; retry once as HLS before giving up.
-    var hlsRetryUrl by remember { mutableStateOf<String?>(null) }
-    val forcedHls = hlsRetryUrl == channel.url
-    val currentChannel by rememberUpdatedState(channel)
+    val attempt = attempts[attemptIndex]
 
-    DisposableEffect(player) {
+    // Keyed on channel so the listener sees this channel's attempt state.
+    DisposableEffect(player, channel) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
@@ -79,45 +82,47 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(e: PlaybackException) {
-                val url = currentChannel.url
-                if (hlsRetryUrl != url && inferMimeType(url) == null) {
-                    hlsRetryUrl = url
+                if (attemptIndex + 1 < attempts.size) {
+                    attemptIndex++
                 } else {
-                    error = "无法播放：${e.errorCodeName}"
+                    error = "所有线路都无法播放：${e.errorCodeName}"
                 }
             }
         }
         player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-            player.release()
-        }
+        onDispose { player.removeListener(listener) }
     }
 
-    LaunchedEffect(channel, forcedHls) {
-        error = null
+    LaunchedEffect(channel, attempt) {
+        val source = channel.sources[attempt.sourceIndex]
         val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(channel.userAgent ?: DEFAULT_USER_AGENT)
+            .setUserAgent(source.userAgent ?: DEFAULT_USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(15_000)
-        channel.referrer?.let { httpFactory.setDefaultRequestProperties(mapOf("Referer" to it)) }
+            .setConnectTimeoutMs(10_000)
+            .setReadTimeoutMs(10_000)
+        source.referrer?.let { httpFactory.setDefaultRequestProperties(mapOf("Referer" to it)) }
 
         val item = MediaItem.Builder()
-            .setUri(channel.url)
-            .apply {
-                val mime = if (forcedHls) MimeTypes.APPLICATION_M3U8 else inferMimeType(channel.url)
-                mime?.let { setMimeType(it) }
-            }
+            .setUri(source.url)
+            .apply { attempt.mimeType?.let { setMimeType(it) } }
             .build()
         player.setMediaSource(DefaultMediaSourceFactory(httpFactory).createMediaSource(item))
         player.prepare()
     }
 
-    LaunchedEffect(channel) {
+    LaunchedEffect(channel, attempt.sourceIndex) {
         showInfo = true
         delay(4_000)
         showInfo = false
+    }
+
+    /** Jumps to the first attempt of the previous (-1) or next (+1) source line. */
+    fun switchSource(delta: Int) {
+        val count = channel.sources.size
+        if (count < 2) return
+        val target = Math.floorMod(attempt.sourceIndex + delta, count)
+        error = null
+        attemptIndex = attempts.indexOfFirst { it.sourceIndex == target }
     }
 
     val focusRequester = remember { FocusRequester() }
@@ -135,6 +140,8 @@ fun PlayerScreen(
                 when (event.key) {
                     Key.DirectionUp, Key.ChannelUp -> { onZap(-1); true }
                     Key.DirectionDown, Key.ChannelDown -> { onZap(1); true }
+                    Key.DirectionLeft -> { switchSource(-1); true }
+                    Key.DirectionRight -> { switchSource(1); true }
                     Key.DirectionCenter, Key.Enter, Key.Info -> { showInfo = !showInfo; true }
                     else -> false
                 }
@@ -176,30 +183,27 @@ fun PlayerScreen(
                     style = MaterialTheme.typography.headlineSmall,
                     color = Color.White,
                 )
-                val status = error ?: if (buffering) "缓冲中…" else channel.group
-                status?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (error != null) MaterialTheme.colorScheme.error else Color.LightGray,
-                    )
+                val line = if (channel.sources.size > 1) {
+                    "线路 ${attempt.sourceIndex + 1}/${channel.sources.size}"
+                } else {
+                    null
                 }
+                val status = error ?: listOfNotNull(
+                    channel.group,
+                    line,
+                    "缓冲中…".takeIf { buffering },
+                ).joinToString("  ·  ")
                 Text(
-                    "▲▼ 换台  ·  OK 显示/隐藏信息  ·  返回 频道列表",
+                    status,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (error != null) MaterialTheme.colorScheme.error else Color.LightGray,
+                )
+                Text(
+                    "▲▼ 换台  ·  ◀▶ 换线路  ·  OK 显示/隐藏信息  ·  返回 频道列表",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.Gray,
                 )
             }
         }
-    }
-}
-
-/** Picks a MIME type from the URL so ExoPlayer chooses HLS/DASH even with query strings. */
-internal fun inferMimeType(url: String): String? {
-    val path = url.substringBefore('?').substringBefore('#').lowercase()
-    return when {
-        path.endsWith(".m3u8") || path.endsWith(".m3u") -> MimeTypes.APPLICATION_M3U8
-        path.endsWith(".mpd") -> MimeTypes.APPLICATION_MPD
-        else -> null
     }
 }

@@ -14,8 +14,8 @@ object M3uParser {
 
     private val attrRegex = Regex("""([\w-]+)="([^"]*)"""")
 
-    fun parse(text: String): List<Channel> {
-        val channels = mutableListOf<Channel>()
+    fun parse(text: String): List<PlaylistEntry> {
+        val channels = mutableListOf<PlaylistEntry>()
         var pending: Pending? = null
 
         for (rawLine in text.lineSequence()) {
@@ -43,7 +43,7 @@ object M3uParser {
                 line.startsWith("#") -> Unit
                 else -> {
                     val p = pending ?: Pending()
-                    channels += Channel(
+                    channels += PlaylistEntry(
                         name = p.name ?: line.substringAfterLast('/'),
                         url = line,
                         group = p.group,
