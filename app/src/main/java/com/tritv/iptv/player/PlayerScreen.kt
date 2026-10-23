@@ -52,6 +52,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
@@ -179,16 +180,26 @@ fun PlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
-    // A probe that finds the line being tried dead usually answers well before the player's own
-    // timeout, so move on to the next line not known to be dead instead of waiting for it.
-    val lineStat = lineStats[lines[attempt.sourceIndex].url]
-    LaunchedEffect(attemptIndex, lineStat) {
-        if (ready || stayOnLine || lineStat == null || !lineStat.failing || lineStat.failAt <= attemptStartedAt) return@LaunchedEffect
-        val next = (attemptIndex + 1 until attempts.size).firstOrNull { i ->
-            val line = attempts[i].sourceIndex
-            line != attempt.sourceIndex && lineStats[lines[line].url]?.failing != true
+    // Probes of this channel's lines start with it and answer well before the player gives up
+    // on a dead line, so act on them: leave a line found dead, or one still loading after a
+    // few seconds when another line is known to work.
+    val lineUrls = remember(lines) { lines.map { it.url } }
+    val lineStat = lineStats[lineUrls[attempt.sourceIndex]]
+    val channelStats = lineUrls.map { lineStats[it] }
+    LaunchedEffect(attemptIndex, channelStats) {
+        fun check(): Boolean {
+            if (ready || stayOnLine) return true
+            val next = probeSwitch(attempts, lineUrls, lineStats, attemptIndex, attemptStartedAt, System.currentTimeMillis())
+                ?: return false
+            attemptIndex = next
+            return true
         }
-        if (next != null) attemptIndex = next
+        if (check()) return@LaunchedEffect
+        val wait = attemptStartedAt + SLOW_START_MS - System.currentTimeMillis()
+        if (wait > 0) {
+            delay(wait)
+            check()
+        }
     }
 
     LaunchedEffect(channel, attempt) {
@@ -197,7 +208,7 @@ fun PlayerScreen(
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(source.userAgent ?: DEFAULT_USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(10_000)
+            .setConnectTimeoutMs(6_000)
             .setReadTimeoutMs(10_000)
         source.referrer?.let { httpFactory.setDefaultRequestProperties(mapOf("Referer" to it)) }
 
@@ -205,7 +216,14 @@ fun PlayerScreen(
             .setUri(source.url)
             .apply { attempt.mimeType?.let { setMimeType(it) } }
             .build()
-        player.setMediaSource(DefaultMediaSourceFactory(httpFactory).createMediaSource(item))
+        // Until a line has played, give up on it after one retry so the next line gets its turn;
+        // once playing, ride out short network hiccups instead of switching lines.
+        val retries = object : DefaultLoadErrorHandlingPolicy() {
+            override fun getMinimumLoadableRetryCount(dataType: Int) = if (ready) 3 else 1
+        }
+        player.setMediaSource(
+            DefaultMediaSourceFactory(httpFactory).setLoadErrorHandlingPolicy(retries).createMediaSource(item),
+        )
         player.prepare()
     }
 

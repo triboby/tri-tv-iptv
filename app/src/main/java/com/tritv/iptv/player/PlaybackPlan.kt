@@ -1,6 +1,7 @@
 package com.tritv.iptv.player
 
 import androidx.media3.common.MimeTypes
+import com.tritv.iptv.data.LineStat
 import com.tritv.iptv.data.PlaylistEntry
 
 /** One way of trying to play a channel: a source line and the MIME type to force (null lets ExoPlayer sniff). */
@@ -38,4 +39,38 @@ internal fun nextAttempt(current: Int, count: Int, silentLine: Int?): Int? = whe
     current + 1 < count -> current + 1
     silentLine != null && silentLine != current -> silentLine
     else -> null
+}
+
+/** How long a line may load before another line that probes have shown working takes over. */
+internal const val SLOW_START_MS = 3_000L
+
+/** A probe or playback success at most this old counts as the line working now. */
+private const val FRESH_MS = 2 * 60_000L
+
+/**
+ * While attempt [current] (started at [startedAt]) is still loading, the attempt to jump to
+ * because of what probes found since, or null to keep waiting: when its line has been found
+ * dead, the fastest line known to work, else the next line not known dead; when it has loaded
+ * for [SLOW_START_MS] without being known to work, the fastest line that is.
+ */
+internal fun probeSwitch(
+    attempts: List<Attempt>,
+    lineUrls: List<String>,
+    stats: Map<String, LineStat>,
+    current: Int,
+    startedAt: Long,
+    now: Long,
+): Int? {
+    val line = attempts[current].sourceIndex
+    fun statOf(i: Int) = stats[lineUrls[attempts[i].sourceIndex]]
+    fun working(s: LineStat?) = s != null && !s.failing && s.okAt > startedAt - FRESH_MS
+    val cur = statOf(current)
+    val dead = cur != null && cur.failing && cur.failAt > startedAt
+    if (!dead && (now - startedAt < SLOW_START_MS || working(cur))) return null
+    val others = attempts.indices.filter { attempts[it].sourceIndex != line }
+    others.filter { working(statOf(it)) }
+        .minByOrNull { statOf(it)?.latencyMs ?: Int.MAX_VALUE }
+        ?.let { return it }
+    if (!dead) return null
+    return others.firstOrNull { it > current && statOf(it)?.failing != true }
 }

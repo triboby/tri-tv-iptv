@@ -1,7 +1,10 @@
 package com.tritv.iptv.data
 
 import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -11,9 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Collections
 
 /**
@@ -33,13 +35,23 @@ class LineRepository(context: Context) {
 
     private val inFlight: MutableSet<String> = Collections.synchronizedSet(HashSet())
     private val sweepLimit = Semaphore(SWEEP_CONCURRENCY)
+    // Probes run here so one stuck on a socket can be abandoned without blocking its caller.
+    private val probeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** [channel]'s lines in the order to try them. */
     fun ordered(channel: Channel): List<PlaylistEntry> {
         if (channel.sources.size < 2) return channel.sources
         val urls = channel.sources.map { it.url }
-        return LineRanker.order(urls, _stats.value, pickPrefs.getString(channel.stableKey, null))
-            .map { channel.sources[it] }
+        val stats = _stats.value
+        val order = LineRanker.order(urls, stats, pickPrefs.getString(channel.stableKey, null))
+        Log.i(TAG, "order ${channel.name}: " + order.joinToString { i -> "${i + 1}=" + describe(stats[urls[i]]) })
+        return order.map { channel.sources[it] }
+    }
+
+    private fun describe(stat: LineStat?): String = when {
+        stat == null || stat.checkedAt == 0L -> "?"
+        stat.failing -> "dead"
+        else -> "${stat.latencyMs ?: "ok"}"
     }
 
     /** Remembers [entry] as the line the viewer chose for [channel]; it is tried first while it works. */
@@ -48,7 +60,10 @@ class LineRepository(context: Context) {
     }
 
     /** Records how real playback of [entry] went. */
-    fun report(entry: PlaylistEntry, ok: Boolean) = record(entry.url, ok, latency = null)
+    fun report(entry: PlaylistEntry, ok: Boolean) {
+        Log.i(TAG, (if (ok) "played " else "play failed ") + entry.url)
+        record(entry.url, ok, latency = null)
+    }
 
     /** Forgets lines that are no longer in the playlist. */
     fun prune(channels: List<Channel>) {
@@ -108,41 +123,20 @@ class LineRepository(context: Context) {
     }
 
     /**
-     * Time in ms until the first byte of [entry]'s response arrives, following redirects,
-     * or null if it fails, times out, or answers with an HTML error page.
+     * Probes [entry] with [LineProbe], giving up after [PROBE_DEADLINE_MS] whatever the socket
+     * timeouts do: a host that resolves to several dead addresses, or a slow DNS answer, can
+     * otherwise hold a probe far longer than the player takes to give up on its own.
      */
-    private suspend fun probe(entry: PlaylistEntry): Int? = withContext(Dispatchers.IO) {
-        val start = System.nanoTime()
-        var url = URL(entry.url)
-        repeat(MAX_REDIRECTS) {
-            val conn = try {
-                url.openConnection() as HttpURLConnection
-            } catch (e: Exception) {
-                return@withContext null
-            }
-            try {
-                conn.connectTimeout = PROBE_TIMEOUT_MS
-                conn.readTimeout = PROBE_TIMEOUT_MS
-                conn.instanceFollowRedirects = false
-                conn.setRequestProperty("User-Agent", entry.userAgent ?: PROBE_USER_AGENT)
-                entry.referrer?.let { conn.setRequestProperty("Referer", it) }
-                val code = conn.responseCode
-                if (code in 300..399) {
-                    val location = conn.getHeaderField("Location") ?: return@withContext null
-                    url = URL(url, location)
-                    return@repeat
-                }
-                if (code !in 200..299) return@withContext null
-                val first = conn.inputStream.read()
-                if (first < 0 || first == '<'.code) return@withContext null
-                return@withContext ((System.nanoTime() - start) / 1_000_000).toInt()
-            } catch (e: Exception) {
-                return@withContext null
-            } finally {
-                conn.disconnect()
-            }
+    private suspend fun probe(entry: PlaylistEntry): Int? {
+        val conns = Collections.synchronizedList(mutableListOf<HttpURLConnection>())
+        val job = probeScope.async { runCatching { LineProbe.run(entry, PROBE_TIMEOUT_MS) { conns += it } }.getOrNull() }
+        val latency = withTimeoutOrNull(PROBE_DEADLINE_MS) { job.await() }
+        if (job.isActive) {
+            job.cancel()
+            synchronized(conns) { conns.forEach { runCatching { it.disconnect() } } }
         }
-        null
+        Log.i(TAG, (if (latency != null) "ok ${latency}ms " else "dead ") + entry.url)
+        return latency
     }
 
     companion object {
@@ -150,9 +144,11 @@ class LineRepository(context: Context) {
         const val SWEEP_MAX_AGE_MS = 30 * 60_000L
         /** Lines of the channel being opened are re-probed when older than this. */
         const val PLAY_MAX_AGE_MS = 2 * 60_000L
-        private const val SWEEP_CONCURRENCY = 4
+        private const val SWEEP_CONCURRENCY = 6
+        /** Socket connect and read timeout for each request of a probe. */
         private const val PROBE_TIMEOUT_MS = 3_000
-        private const val MAX_REDIRECTS = 5
-        private const val PROBE_USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
+        /** Most a whole probe (playlist, variant, segment, redirects) may take. */
+        private const val PROBE_DEADLINE_MS = 6_000L
+        private const val TAG = "TriTV-Lines"
     }
 }
