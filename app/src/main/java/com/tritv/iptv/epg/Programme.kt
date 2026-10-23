@@ -15,12 +15,20 @@ data class Programme(
 }
 
 /**
- * Ends each programme no later than the next one starts, from a list sorted by start time, so the
- * grid and the "now" line agree when a guide's times overlap (e.g. 21:10–22:17 then 21:23).
+ * Resolves overlaps in a list sorted by start time in favour of the programme that started first:
+ * a later one starts when it ends, or is dropped if it ends by then. Guides seen so far get the
+ * earlier entry right (e.g. 新花路放 21:10–22:17 is what airs, not 综艺喜乐汇 listed from 21:23).
  */
-fun List<Programme>.endAtNextStart(): List<Programme> = mapIndexed { i, p ->
-    val next = getOrNull(i + 1)
-    if (next != null && next.start < p.stop) p.copy(stop = next.start) else p
+fun List<Programme>.withoutOverlaps(): List<Programme> {
+    val result = ArrayList<Programme>(size)
+    for (p in this) {
+        val last = result.lastOrNull()
+        when {
+            last == null || p.start >= last.stop -> result += p
+            p.stop > last.stop -> result += p.copy(start = last.stop)
+        }
+    }
+    return result
 }
 
 /** The programme on at [now] and the one after it, from a list sorted by start time. */

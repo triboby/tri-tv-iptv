@@ -70,18 +70,21 @@ class XmltvParserTest {
     }
 
     @Test
-    fun endsOverlappingProgrammesWhenTheNextStarts() {
+    fun keepsTheEarlierProgrammeWhenTimesOverlap() {
         val guide = parse(
             """
             <tv>
-              <programme start="20261023211000 +0800" stop="20261023221700 +0800" channel="CCTV3"><title>综艺</title></programme>
-              <programme start="20261023212300 +0800" stop="20261023230000 +0800" channel="CCTV3"><title>电影</title></programme>
+              <programme start="20261023211000 +0800" stop="20261023221700 +0800" channel="CCTV3"><title>新花路放</title></programme>
+              <programme start="20261023212300 +0800" stop="20261023221700 +0800" channel="CCTV3"><title>综艺喜乐汇</title></programme>
+              <programme start="20261023220000 +0800" stop="20261023230000 +0800" channel="CCTV3"><title>电影</title></programme>
             </tv>
             """.trimIndent(),
         )
-        val (first, second) = guide.getValue("CCTV3")
-        assertEquals(XmltvParser.parseTime("20261023212300 +0800"), first.stop)
-        assertEquals(XmltvParser.parseTime("20261023230000 +0800"), second.stop)
+        val list = guide.getValue("CCTV3")
+        assertEquals(listOf("新花路放", "电影"), list.map { it.title })
+        assertEquals(XmltvParser.parseTime("20261023221700 +0800"), list[0].stop)
+        assertEquals(XmltvParser.parseTime("20261023221700 +0800"), list[1].start)
+        assertEquals(XmltvParser.parseTime("20261023230000 +0800"), list[1].stop)
     }
 
     @Test
