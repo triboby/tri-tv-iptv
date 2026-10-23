@@ -41,9 +41,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -75,7 +77,7 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val player = remember {
-        ExoPlayer.Builder(context).build().apply { playWhenReady = true }
+        ExoPlayer.Builder(context, TvRenderersFactory(context)).build().apply { playWhenReady = true }
     }
     DisposableEffect(player) {
         onDispose { player.release() }
@@ -84,6 +86,11 @@ fun PlayerScreen(
     val attempts = remember(channel) { playbackAttempts(channel.sources) }
     var attemptIndex by remember(channel) { mutableIntStateOf(0) }
     var error by remember(channel) { mutableStateOf<String?>(null) }
+    // First attempt that showed video without decodable audio, kept as a last resort.
+    var silentLine by remember(channel) { mutableStateOf<Int?>(null) }
+    // Set when the viewer picked the line, or every other line failed: stay on it even if silent.
+    var stayOnLine by remember(channel) { mutableStateOf(false) }
+    var noAudio by remember(channel) { mutableStateOf(false) }
     var buffering by remember { mutableStateOf(true) }
     var showInfo by remember { mutableStateOf(true) }
     val attempt = attempts[attemptIndex]
@@ -97,11 +104,22 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(e: PlaybackException) {
-                if (attemptIndex + 1 < attempts.size) {
-                    attemptIndex++
-                } else {
+                val next = nextAttempt(attemptIndex, attempts.size, silentLine)
+                if (next == null) {
                     error = "所有线路都无法播放：${e.errorCodeName}"
+                } else {
+                    stayOnLine = next == silentLine
+                    attemptIndex = next
                 }
+            }
+
+            // A line whose audio no renderer can decode plays silently without raising an
+            // error, so treat it as a failure here and try the next line.
+            override fun onTracksChanged(tracks: Tracks) {
+                noAudio = tracks.containsType(C.TRACK_TYPE_AUDIO) && !tracks.isTypeSupported(C.TRACK_TYPE_AUDIO)
+                if (!noAudio || stayOnLine || attemptIndex + 1 >= attempts.size) return
+                if (silentLine == null) silentLine = attemptIndex
+                attemptIndex++
             }
         }
         player.addListener(listener)
@@ -137,6 +155,7 @@ fun PlayerScreen(
         if (count < 2) return
         val target = Math.floorMod(attempt.sourceIndex + delta, count)
         error = null
+        stayOnLine = true
         attemptIndex = attempts.indexOfFirst { it.sourceIndex == target }
     }
 
@@ -238,6 +257,9 @@ fun PlayerScreen(
                             if (buffering) {
                                 Dot()
                                 Text("缓冲中", style = TriTvType.Caption, color = TriTvColors.SkyBlue)
+                            } else if (noAudio) {
+                                Dot()
+                                Text("无声音：音频格式不支持", style = TriTvType.Caption, color = TriTvColors.Error)
                             }
                         }
                     }
