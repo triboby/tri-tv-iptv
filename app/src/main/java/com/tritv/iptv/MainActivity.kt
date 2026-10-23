@@ -27,13 +27,15 @@ class MainActivity : ComponentActivity() {
                     val channel = state.channels[playing]
                     PlayerScreen(
                         channel = channel,
-                        channelNumber = state.visibleIndices.indexOf(playing)
-                            .takeIf { state.favoritesSelected && it >= 0 }?.plus(1) ?: (playing + 1),
+                        channelNumber = playing + 1,
                         programmes = state.programmesOf(channel),
                         isFavorite = state.isFavorite(channel),
                         onToggleFavorite = { viewModel.toggleFavorite(channel.stableKey) },
                         onOpenGuide = viewModel::openGuide,
+                        zapTarget = viewModel::zapTarget,
+                        channelName = { n -> state.channels.getOrNull(n - 1)?.name },
                         onZap = viewModel::zap,
+                        onPlayNumber = viewModel::playNumber,
                         onExit = viewModel::stop,
                     )
                 } else if (state.showGuide && state.channels.isNotEmpty()) {
@@ -60,6 +62,7 @@ class MainActivity : ComponentActivity() {
                         onStartMove = viewModel::startMovingFavorite,
                         onMove = viewModel::moveFavorite,
                         onFinishMove = viewModel::finishMovingFavorite,
+                        onPlayNumber = viewModel::playNumber,
                     )
                 }
             }

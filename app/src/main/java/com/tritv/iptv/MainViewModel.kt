@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.tritv.iptv.data.Channel
 import com.tritv.iptv.data.FavoriteList
 import com.tritv.iptv.data.PlaylistRepository
+import com.tritv.iptv.data.guideErrorMessage
 import com.tritv.iptv.data.loadErrorMessage
 import com.tritv.iptv.epg.GuideRepository
 import com.tritv.iptv.epg.Programme
+import com.tritv.iptv.epg.resolveGuideUrl
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +30,8 @@ data class GuideStatus(
     val error: String? = null,
     /** True when the address came from the playlist header rather than the viewer. */
     val fromPlaylist: Boolean = false,
+    /** The address actually fetched, after moving a loopback host to the playlist's host. */
+    val url: String? = null,
 )
 
 data class UiState(
@@ -160,7 +164,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshGuide(force: Boolean = false) {
         val channels = _state.value.channels
         val own = repo.guideUrl
-        val url = own ?: playlistGuideUrl
+        val url = (own ?: playlistGuideUrl)?.let { resolveGuideUrl(it, repo.savedUrl.orEmpty()) }
         guideJob?.cancel()
         if (url == null || channels.isEmpty()) {
             _state.update {
@@ -172,7 +176,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         _state.update {
-            it.copy(guideStatus = (it.guideStatus ?: GuideStatus()).copy(loading = true, error = null, fromPlaylist = own == null))
+            it.copy(guideStatus = (it.guideStatus ?: GuideStatus()).copy(loading = true, error = null, fromPlaylist = own == null, url = url))
         }
         guideJob = viewModelScope.launch {
             var forceNext = force
@@ -187,13 +191,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                     matched = channels.count { c -> c.stableKey in data.programmes },
                                     total = channels.size,
                                     fromPlaylist = own == null,
+                                    url = url,
                                 ),
                             )
                         }
                     }
                     .onFailure { e ->
                         _state.update {
-                            it.copy(guideStatus = GuideStatus(error = "节目单下载失败：" + loadErrorMessage(e), fromPlaylist = own == null))
+                            it.copy(guideStatus = GuideStatus(error = guideErrorMessage(e), fromPlaylist = own == null, url = url))
                         }
                     }
                 forceNext = true
@@ -267,12 +272,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Moves to the next (+1) or previous (-1) channel in the current group, wrapping around. */
     fun zap(delta: Int) {
+        zapTarget(delta)?.let(::play)
+    }
+
+    /** Index of the channel [delta] steps from the one playing within the current list, wrapping around. */
+    fun zapTarget(delta: Int): Int? {
         val s = _state.value
-        val current = s.playingIndex ?: return
+        val current = s.playingIndex ?: return null
         val visible = s.visibleIndices
-        if (visible.isEmpty()) return
+        if (visible.isEmpty()) return null
         val pos = visible.indexOf(current).takeIf { it >= 0 } ?: 0
-        play(visible[Math.floorMod(pos + delta, visible.size)])
+        return visible[Math.floorMod(pos + delta, visible.size)]
+    }
+
+    /** Plays the channel with list number [number] (1-based, as shown), if there is one. */
+    fun playNumber(number: Int) {
+        if (number - 1 in _state.value.channels.indices) play(number - 1)
     }
 
     fun stop() = _state.update { it.copy(playingIndex = null) }

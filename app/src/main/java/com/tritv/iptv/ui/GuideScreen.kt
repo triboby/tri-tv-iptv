@@ -156,7 +156,7 @@ fun GuideScreen(state: UiState, onPlay: (Int) -> Unit, onBack: () -> Unit) {
                             GuideRow(
                                 state = state,
                                 index = index,
-                                number = if (state.favoritesSelected) r + 1 else index + 1,
+                                number = index + 1,
                                 windowStart = windowStart,
                                 now = now,
                                 track = track,
@@ -227,7 +227,11 @@ private fun GuideKeyHint(key: String, label: String) {
 @Composable
 private fun TimeRuler(windowStart: Long, now: Long, track: Dp) {
     Box(Modifier.fillMaxWidth().height(24.dp)) {
+        val nowShown = now in windowStart until windowStart + WINDOW
         for (i in 0 until 4) {
+            val tick = windowStart + i * HALF_HOUR
+            // The now pill sits over a mark that falls just before or under it.
+            if (nowShown && now - tick in -6 * MINUTE until 14 * MINUTE) continue
             Text(
                 hm(windowStart + i * HALF_HOUR),
                 style = TriTvType.Small.tabular(),

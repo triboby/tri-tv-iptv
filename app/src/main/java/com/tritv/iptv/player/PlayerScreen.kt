@@ -58,6 +58,7 @@ import androidx.tv.material3.Text
 import com.tritv.iptv.data.Channel
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
+import com.tritv.iptv.ui.ChannelJumpPill
 import com.tritv.iptv.ui.ClockText
 import com.tritv.iptv.ui.Dot
 import com.tritv.iptv.ui.GroupCaption
@@ -68,7 +69,9 @@ import com.tritv.iptv.ui.ScreenMargin
 import com.tritv.iptv.ui.StarIcon
 import com.tritv.iptv.ui.TriTvColors
 import com.tritv.iptv.ui.TriTvType
+import com.tritv.iptv.ui.digitOf
 import com.tritv.iptv.ui.rememberNow
+import com.tritv.iptv.ui.rememberNumberEntry
 import com.tritv.iptv.ui.tabular
 import com.tritv.iptv.ui.timeRange
 import kotlinx.coroutines.delay
@@ -86,7 +89,12 @@ fun PlayerScreen(
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
     onOpenGuide: () -> Unit,
+    /** Index of the channel that many steps away in the current list, for the zap preview. */
+    zapTarget: (Int) -> Int?,
+    /** Name of the channel with this list number (1-based), or null if there is none. */
+    channelName: (Int) -> String?,
     onZap: (Int) -> Unit,
+    onPlayNumber: (Int) -> Unit,
     onExit: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -111,6 +119,10 @@ fun PlayerScreen(
     var favoriteNote by remember { mutableStateOf<String?>(null) }
     // Set once a held OK has toggled the favourite, so its release does not also toggle the info bar.
     var okHeld by remember { mutableStateOf(false) }
+    // Channel steps pressed in quick succession, applied together once the presses pause, so a
+    // burst of Up/Down does not restart the player for every channel on the way.
+    var pendingZap by remember { mutableIntStateOf(0) }
+    val numberEntry = rememberNumberEntry(onPlayNumber)
     val attempt = attempts[attemptIndex]
 
     // Keyed on channel so the listener sees this channel's attempt state.
@@ -173,6 +185,14 @@ fun PlayerScreen(
         favoriteNote = null
     }
 
+    LaunchedEffect(pendingZap) {
+        if (pendingZap == 0) return@LaunchedEffect
+        delay(350)
+        val delta = pendingZap
+        pendingZap = 0
+        onZap(delta)
+    }
+
     fun toggleFavorite() {
         favoriteNote = if (isFavorite) "已取消收藏" else "已加入收藏"
         onToggleFavorite()
@@ -199,6 +219,15 @@ fun PlayerScreen(
             .background(Color.Black)
             .focusRequester(focusRequester)
             .onKeyEvent { event ->
+                // Digits type a channel number; consume both halves so the TV does not switch input.
+                digitOf(event.key)?.let { digit ->
+                    if (event.type == KeyEventType.KeyDown) numberEntry.type(digit)
+                    return@onKeyEvent true
+                }
+                if ((event.key == Key.DirectionCenter || event.key == Key.Enter) && numberEntry.active) {
+                    if (event.type == KeyEventType.KeyUp) numberEntry.commit()
+                    return@onKeyEvent true
+                }
                 // OK toggles the info bar on release; held down, it toggles the favourite instead.
                 if (event.key == Key.DirectionCenter || event.key == Key.Enter) {
                     if (event.type == KeyEventType.KeyDown) {
@@ -214,8 +243,8 @@ fun PlayerScreen(
                 }
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
-                    Key.DirectionUp, Key.ChannelUp -> { onZap(-1); true }
-                    Key.DirectionDown, Key.ChannelDown -> { onZap(1); true }
+                    Key.DirectionUp, Key.ChannelUp -> { pendingZap--; true }
+                    Key.DirectionDown, Key.ChannelDown -> { pendingZap++; true }
                     Key.DirectionLeft -> { switchSource(-1); true }
                     Key.DirectionRight -> { switchSource(1); true }
                     Key.Info -> { showInfo = !showInfo; true }
@@ -243,17 +272,34 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
+        // Where a burst of Up/Down or the typed digits will land.
+        val jumpNumber = when {
+            numberEntry.active -> numberEntry.digits
+            pendingZap != 0 -> zapTarget(pendingZap)?.let { "%03d".format(it + 1) }
+            else -> null
+        }
+        if (jumpNumber != null) {
+            ChannelJumpPill(
+                number = jumpNumber,
+                name = channelName(jumpNumber.toInt()),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 80.dp),
+            )
+        }
+
         AnimatedVisibility(
             visible = favoriteNote != null,
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(200)),
-            modifier = Modifier.align(Alignment.TopStart),
+            // Centred: stations put their logo in a top corner.
+            modifier = Modifier.align(Alignment.TopCenter),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
-                    .padding(top = 27.dp, start = ScreenMargin)
+                    .padding(top = 27.dp)
                     .height(36.dp)
                     .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Pill)
                     .padding(start = 12.dp, end = 16.dp),

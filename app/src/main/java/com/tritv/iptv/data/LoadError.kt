@@ -26,3 +26,17 @@ fun loadErrorMessage(e: Throwable): String = when (e) {
     is FileNotFoundException -> "服务器上没有这个播放列表"
     else -> "加载失败，请检查地址"
 }
+
+/** Why downloading or reading the programme guide failed, for the source page's guide card. */
+fun guideErrorMessage(e: Throwable): String = when (e) {
+    is HttpStatusException -> when (e.code) {
+        404 -> "服务器上没有这个节目单文件（HTTP 404），请检查节目单地址"
+        401, 403 -> "节目单服务器拒绝访问（HTTP ${e.code}）"
+        else -> "节目单服务器返回错误（HTTP ${e.code}）"
+    }
+    is FileNotFoundException -> "服务器上没有这个节目单文件，请检查节目单地址"
+    is org.xml.sax.SAXException, is java.util.zip.ZipException, is java.io.EOFException ->
+        "节目单文件不是有效的 XMLTV（或 .gz）格式"
+    is ConnectException, is NoRouteToHostException -> "连不上节目单服务器，请确认地址和服务都正常"
+    else -> "节目单" + loadErrorMessage(e).removePrefix("加载")
+}

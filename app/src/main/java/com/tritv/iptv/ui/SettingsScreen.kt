@@ -41,6 +41,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
@@ -206,7 +207,7 @@ private fun CheckMark() {
 
 @Composable
 private fun GuideCard(status: GuideStatus, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
-    StatusCard("节目单", ok = status.error == null, modifier = modifier) {
+    StatusCard("节目单", ok = status.error == null && (status.loading || status.matched > 0), modifier = modifier) {
         val dim = TriTvColors.TextMuted
         when {
             status.loading -> Text("正在下载并解析…", style = TriTvType.Caption, color = dim)
@@ -224,8 +225,19 @@ private fun GuideCard(status: GuideStatus, onRefresh: () -> Unit, modifier: Modi
                     if (status.total == 0) 0f else status.matched.toFloat() / status.total,
                     Modifier.fillMaxWidth().padding(top = 4.dp),
                 )
-                if (status.fromPlaylist) Text("地址来自播放列表", style = TriTvType.Small, color = TriTvColors.TextDim)
+                if (status.matched == 0) {
+                    Text("节目单里的频道名和播放列表对不上", style = TriTvType.Caption, color = TriTvColors.Error)
+                }
             }
+        }
+        status.url?.let {
+            Text(
+                (if (status.fromPlaylist) "来自播放列表：" else "") + it,
+                style = TriTvType.Small,
+                color = TriTvColors.TextDim,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         if (!status.loading) {
             Spacer(Modifier.height(4.dp))

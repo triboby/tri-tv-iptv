@@ -66,6 +66,7 @@ fun ChannelListScreen(
     onStartMove: (String) -> Unit,
     onMove: (Int) -> Unit,
     onFinishMove: (cancel: Boolean) -> Unit,
+    onPlayNumber: (Int) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -75,6 +76,8 @@ fun ChannelListScreen(
     var menuFor by remember { mutableStateOf<String?>(null) }
     val now = rememberNow()
     val moving = state.movingFavorite
+
+    val numberEntry = rememberNumberEntry(onPlayNumber)
 
     BackHandler(enabled = moving != null) { onFinishMove(true) }
 
@@ -86,115 +89,143 @@ fun ChannelListScreen(
         runCatching { focusRequester.requestFocus() }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(TriTvColors.Black),
+            // Digits type a channel number and play it; consumed so the TV does not switch input.
+            .onPreviewKeyEvent { event ->
+                digitOf(event.key)?.let { digit ->
+                    if (event.type == KeyEventType.KeyDown) numberEntry.type(digit)
+                    return@onPreviewKeyEvent true
+                }
+                val ok = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+                if (ok && numberEntry.active) {
+                    if (event.type == KeyEventType.KeyUp) numberEntry.commit()
+                    return@onPreviewKeyEvent true
+                }
+                false
+            },
     ) {
-        TopBar()
-        SubNav(state, onOpenSettings, onOpenGuide)
-
-        if (state.channels.isEmpty()) {
-            EmptyHint(loading = state.loading, onOpenSettings = onOpenSettings)
-            return@Column
-        }
-
-        Hero(state, focusedIndex, now)
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(TriTvColors.Ink)
-                .padding(horizontal = ScreenMargin, vertical = 20.dp),
+                .background(TriTvColors.Black),
         ) {
-            if (state.groups.isNotEmpty()) {
-                // Scrolls when there are more groups than fit; the bottom padding keeps the last chip clear of the edge.
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    contentPadding = PaddingValues(bottom = 8.dp),
-                    modifier = Modifier
-                        .width(184.dp)
-                        .fillMaxHeight(),
-                ) {
-                    if (state.favorites.isNotEmpty()) {
-                        item(key = "__favorites__") {
-                            GroupChip(FAVORITES_LABEL, state.favorites.size, state.favoritesSelected, onClick = onSelectFavorites)
-                        }
-                    }
-                    item(key = "__all__") {
-                        GroupChip(ALL_LABEL, state.channels.size, !state.favoritesSelected && state.selectedGroup == null) {
-                            onSelectGroup(null)
-                        }
-                    }
-                    items(state.groups, key = { it }) { group ->
-                        GroupChip(
-                            label = remember(group) { groupLabel(group) },
-                            count = state.channels.count { it.group == group },
-                            selected = !state.favoritesSelected && state.selectedGroup == group,
-                        ) { onSelectGroup(group) }
-                    }
-                }
+            TopBar()
+            SubNav(state, onOpenSettings, onOpenGuide)
+
+            if (state.channels.isEmpty()) {
+                EmptyHint(loading = state.loading, onOpenSettings = onOpenSettings)
+                return@Column
             }
 
-            LazyColumn(
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-                contentPadding = PaddingValues(8.dp),
+            Hero(state, focusedIndex, now)
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .background(TriTvColors.Tile, Radius.Card)
-                    // While a favourite is being moved, Up/Down move it and OK puts it down.
-                    .onPreviewKeyEvent { event ->
-                        if (moving == null) return@onPreviewKeyEvent false
-                        val down = event.type == KeyEventType.KeyDown
-                        when (event.key) {
-                            Key.DirectionUp -> { if (down) onMove(-1); true }
-                            Key.DirectionDown -> { if (down) onMove(1); true }
-                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (!down) onFinishMove(false); true }
-                            Key.DirectionLeft, Key.DirectionRight -> true
-                            else -> false
-                        }
-                    },
+                    .fillMaxSize()
+                    .background(TriTvColors.Ink)
+                    .padding(horizontal = ScreenMargin, vertical = 20.dp),
             ) {
-                itemsIndexed(visible, key = { _, index -> index }) { pos, index ->
-                    val channel = state.channels[index]
-                    ChannelRow(
-                        state = state,
-                        index = index,
-                        number = if (state.favoritesSelected) pos + 1 else index + 1,
-                        now = now,
-                        moving = channel.stableKey == moving,
-                        onClick = { onPlay(index) },
-                        onLongClick = { menuFor = channel.stableKey },
+                if (state.groups.isNotEmpty()) {
+                    // Scrolls when there are more groups than fit; the bottom padding keeps the last chip clear of the edge.
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        contentPadding = PaddingValues(bottom = 8.dp),
                         modifier = Modifier
-                            .onFocusChanged { if (it.isFocused) focusedIndex = index }
-                            .onKeyEvent { event ->
-                                // Menu adds or removes the focused channel from the favourites.
-                                if (event.key == Key.Menu && moving == null) {
-                                    if (event.type == KeyEventType.KeyUp) onToggleFavorite(channel.stableKey)
-                                    true
-                                } else {
-                                    false
-                                }
+                            .width(184.dp)
+                            .fillMaxHeight(),
+                    ) {
+                        if (state.favorites.isNotEmpty()) {
+                            item(key = "__favorites__") {
+                                GroupChip(FAVORITES_LABEL, state.favorites.size, state.favoritesSelected, onClick = onSelectFavorites)
                             }
-                            .then(if (index == state.focusIndex) Modifier.focusRequester(focusRequester) else Modifier),
-                    )
-                }
-                if (state.favoritesSelected && moving == null) {
-                    items(state.missingFavorites, key = { "missing:$it" }) { key ->
-                        MissingFavoriteRow(key, onLongClick = { menuFor = key })
+                        }
+                        item(key = "__all__") {
+                            GroupChip(ALL_LABEL, state.channels.size, !state.favoritesSelected && state.selectedGroup == null) {
+                                onSelectGroup(null)
+                            }
+                        }
+                        items(state.groups, key = { it }) { group ->
+                            GroupChip(
+                                label = remember(group) { groupLabel(group) },
+                                count = state.channels.count { it.group == group },
+                                selected = !state.favoritesSelected && state.selectedGroup == group,
+                            ) { onSelectGroup(group) }
+                        }
                     }
                 }
-            }
 
-            // Keep the favourite being moved in view as it travels.
-            LaunchedEffect(moving, state.favorites) {
-                if (moving == null) return@LaunchedEffect
-                val pos = visible.indexOfFirst { state.channels[it].stableKey == moving }
-                if (pos >= 0) listState.animateScrollToItem((pos - 2).coerceAtLeast(0))
+                LazyColumn(
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    contentPadding = PaddingValues(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(TriTvColors.Tile, Radius.Card)
+                        // While a favourite is being moved, Up/Down move it and OK puts it down.
+                        .onPreviewKeyEvent { event ->
+                            if (moving == null) return@onPreviewKeyEvent false
+                            val down = event.type == KeyEventType.KeyDown
+                            when (event.key) {
+                                Key.DirectionUp -> { if (down) onMove(-1); true }
+                                Key.DirectionDown -> { if (down) onMove(1); true }
+                                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (!down) onFinishMove(false); true }
+                                Key.DirectionLeft, Key.DirectionRight -> true
+                                else -> false
+                            }
+                        },
+                ) {
+                    itemsIndexed(visible, key = { _, index -> index }) { _, index ->
+                        val channel = state.channels[index]
+                        ChannelRow(
+                            state = state,
+                            index = index,
+                            number = index + 1,
+                            now = now,
+                            moving = channel.stableKey == moving,
+                            onClick = { onPlay(index) },
+                            onLongClick = { menuFor = channel.stableKey },
+                            modifier = Modifier
+                                .onFocusChanged { if (it.isFocused) focusedIndex = index }
+                                .onKeyEvent { event ->
+                                    // Menu adds or removes the focused channel from the favourites.
+                                    if (event.key == Key.Menu && moving == null) {
+                                        if (event.type == KeyEventType.KeyUp) onToggleFavorite(channel.stableKey)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                .then(if (index == state.focusIndex) Modifier.focusRequester(focusRequester) else Modifier),
+                        )
+                    }
+                    if (state.favoritesSelected && moving == null) {
+                        items(state.missingFavorites, key = { "missing:$it" }) { key ->
+                            MissingFavoriteRow(key, onLongClick = { menuFor = key })
+                        }
+                    }
+                }
+
+                // Keep the favourite being moved in view as it travels.
+                LaunchedEffect(moving, state.favorites) {
+                    if (moving == null) return@LaunchedEffect
+                    val pos = visible.indexOfFirst { state.channels[it].stableKey == moving }
+                    if (pos >= 0) listState.animateScrollToItem((pos - 2).coerceAtLeast(0))
+                }
             }
+        }
+
+        if (numberEntry.active) {
+            ChannelJumpPill(
+                number = numberEntry.digits,
+                name = state.channels.getOrNull(numberEntry.digits.toInt() - 1)?.name,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 104.dp, end = ScreenMargin),
+            )
         }
     }
 
