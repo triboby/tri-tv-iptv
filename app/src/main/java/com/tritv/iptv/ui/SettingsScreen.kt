@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Text
 import com.tritv.iptv.GuideStatus
 import com.tritv.iptv.UiState
@@ -233,9 +234,15 @@ private fun GuideCard(status: GuideStatus, onRefresh: () -> Unit, modifier: Modi
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (!status.loading) {
-            Spacer(Modifier.height(4.dp))
-            UtilityButton(onClick = onRefresh) { Text("立即刷新节目单", style = TriTvType.Caption) }
+        // Stays in place while refreshing so focus does not jump back to the address field.
+        Spacer(Modifier.height(4.dp))
+        UtilityButton(onClick = { if (!status.loading) onRefresh() }) {
+            if (status.loading) {
+                Spinner(size = 14.dp, stroke = 1.5.dp, color = LocalContentColor.current, trackColor = LocalContentColor.current.copy(alpha = 0.3f))
+                Text("正在刷新…", style = TriTvType.Caption)
+            } else {
+                Text("立即刷新节目单", style = TriTvType.Caption)
+            }
         }
     }
 }
