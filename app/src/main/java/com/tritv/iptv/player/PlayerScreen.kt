@@ -4,20 +4,21 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,8 +38,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -49,13 +50,16 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tritv.iptv.data.Channel
-import com.tritv.iptv.ui.EyebrowStyle
+import com.tritv.iptv.ui.ClockText
+import com.tritv.iptv.ui.Dot
+import com.tritv.iptv.ui.GroupCaption
+import com.tritv.iptv.ui.KeyCap
+import com.tritv.iptv.ui.Radius
+import com.tritv.iptv.ui.ScreenMargin
 import com.tritv.iptv.ui.TriTvColors
-import com.tritv.iptv.ui.glassPanel
-import com.tritv.iptv.ui.groupLabel
+import com.tritv.iptv.ui.TriTvType
 import kotlinx.coroutines.delay
 
 private const val DEFAULT_USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
@@ -177,59 +181,81 @@ fun PlayerScreen(
 
         AnimatedVisibility(
             visible = showInfo || error != null,
-            enter = fadeIn(tween(420)) + slideInVertically(tween(420)) { it / 5 },
-            exit = fadeOut(tween(220)),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(48.dp),
+            enter = fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 3 },
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.TopEnd),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .padding(top = 27.dp, end = ScreenMargin)
+                    .height(36.dp)
+                    .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Pill)
+                    .padding(horizontal = 16.dp),
+            ) {
+                ClockText(TriTvType.Caption.copy(fontWeight = FontWeight.SemiBold))
+            }
+        }
+
+        // Full-width frosted bar along the bottom edge.
+        AnimatedVisibility(
+            visible = showInfo || error != null,
+            enter = fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 3 },
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
                 modifier = Modifier
-                    .glassPanel()
-                    .padding(horizontal = 28.dp, vertical = 18.dp),
+                    .fillMaxWidth()
+                    .height(104.dp)
+                    .background(TriTvColors.Ink.copy(alpha = 0.85f))
+                    .padding(start = ScreenMargin, end = ScreenMargin, bottom = 8.dp),
             ) {
                 Text(
                     "%03d".format(channelNumber),
-                    style = MaterialTheme.typography.displaySmall,
-                    color = TriTvColors.Text,
+                    style = TriTvType.PlayerNumber,
+                    modifier = Modifier.width(88.dp),
                 )
-                Box(
-                    Modifier
-                        .padding(horizontal = 20.dp)
-                        .width(1.dp)
-                        .height(48.dp)
-                        .background(TriTvColors.GlassStroke),
-                )
-                Column {
-                    Text(
-                        channel.name,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = TriTvColors.Text,
-                    )
-                    val line = if (channel.sources.size > 1) {
-                        "线路 ${attempt.sourceIndex + 1}/${channel.sources.size}"
-                    } else {
-                        null
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                    Text(channel.name, style = TriTvType.Tagline, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val err = error
+                        if (err != null) {
+                            Text(err, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 1)
+                        } else {
+                            channel.group?.let { GroupCaption(it, TriTvType.Caption, TriTvColors.TextMuted) }
+                            if (channel.sources.size > 1) {
+                                if (channel.group != null) Dot()
+                                Text(
+                                    "线路 ${attempt.sourceIndex + 1}/${channel.sources.size}",
+                                    style = TriTvType.Caption,
+                                    color = TriTvColors.TextMuted,
+                                )
+                            }
+                            if (buffering) {
+                                Dot()
+                                Text("缓冲中", style = TriTvType.Caption, color = TriTvColors.SkyBlue)
+                            }
+                        }
                     }
-                    val status = error ?: listOfNotNull(
-                        channel.group?.let(::groupLabel),
-                        line,
-                        "缓冲中…".takeIf { buffering },
-                    ).joinToString("  ·  ")
-                    Text(
-                        status,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (error != null) TriTvColors.Error else TriTvColors.TextMid,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "▲▼ 换台   ◀▶ 换线路   OK 信息   返回 频道列表",
-                        style = EyebrowStyle.copy(fontSize = 11.sp),
-                        color = TriTvColors.TextDim,
-                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    KeyHint("▲▼", "换台")
+                    KeyHint("◀▶", "换线路")
+                    KeyHint("OK", "信息")
+                    KeyHint("返回", "列表")
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun KeyHint(key: String, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        KeyCap(key)
+        Text(label, style = TriTvType.Small, color = TriTvColors.TextMuted)
     }
 }

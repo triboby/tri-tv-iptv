@@ -32,6 +32,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 界面风格与第三方资源
 
-界面参考了 [CleanYourTV](https://github.com/Gathin23/cleanyourtv) 启动器（MIT）的 tvOS 式深色玻璃风格：近黑底色加柔和环境光、半透明“毛玻璃”控件、聚焦时变为纯白并略微放大。颜色与组件在 `ui/Theme.kt`、`ui/Components.kt` 中重新实现，未复制其代码。
+界面参照 Apple 官网的设计语言，并做了适合电视的调整：纯黑和深灰底色按区块切换，不用渐变、光晕和阴影；可交互元素只用一种蓝色，遥控器聚焦的项目整块填充为蓝色；字重只用 300 / 400 / 600。分组名开头的 emoji 会被拆出来，放进固定大小的图标槽。
 
-拉丁字母和数字使用 [Outfit](https://github.com/Outfitio/Outfit-Fonts) 字体（`app/src/main/res/font/outfit.ttf`），以 SIL Open Font License 1.1 授权，许可证见 [`app/FONT-LICENSE-OFL.txt`](app/FONT-LICENSE-OFL.txt)。中文使用系统字体。
+拉丁字母和数字使用 [Inter](https://github.com/rsms/inter) 字体（`app/src/main/res/font/inter_*.ttf`），以 SIL Open Font License 1.1 授权，许可证见 [`app/FONT-LICENSE-OFL.txt`](app/FONT-LICENSE-OFL.txt)。中文使用系统字体。
