@@ -21,7 +21,7 @@ class ChannelMergerTest {
 
         assertEquals(listOf("CCTV-1", "CCTV-2"), channels.map { it.name })
         assertEquals(listOf("http://a/1.m3u8", "http://b/1.m3u8"), channels[0].sources.map { it.url })
-        assertEquals("http://logo/1.png", channels[0].logo)
+        assertEquals(listOf("http://logo/1.png"), channels[0].logos)
     }
 
     @Test
