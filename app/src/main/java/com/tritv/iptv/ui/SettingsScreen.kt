@@ -1,6 +1,5 @@
 package com.tritv.iptv.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -29,10 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -44,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Text
 import com.tritv.iptv.GuideStatus
 import com.tritv.iptv.UiState
@@ -133,10 +131,14 @@ fun SettingsScreen(
                 Spacer(Modifier.weight(1f))
                 state.error?.let { Text(it, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 2) }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Fixed width so the label can swap to the spinner and back without the row moving.
                     PrimaryPill(
-                        text = if (state.loading) "导入中…" else "保存并导入",
+                        text = "保存并导入",
                         onClick = onLoad,
-                        enabled = !state.loading && state.playlistUrl.isNotBlank(),
+                        enabled = state.loading || state.imported || state.playlistUrl.isNotBlank(),
+                        busyText = if (state.loading) "导入中…" else null,
+                        doneText = if (state.imported) "已导入" else null,
+                        width = 148.dp,
                         modifier = Modifier.focusRequester(buttonFocus),
                     )
                     if (canGoBack) SecondaryPill("取消", onClick = onCancel)
@@ -170,6 +172,8 @@ private fun StatusCard(
     title: String,
     ok: Boolean,
     modifier: Modifier = Modifier,
+    /** Shows a spinner in the check slot until the work finishes. */
+    loading: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     Column(
@@ -181,7 +185,7 @@ private fun StatusCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                if (ok) CheckMark() else Text("!", style = TriTvType.LabelStrong, color = TriTvColors.Error)
+                if (loading) Spinner(size = 16.dp, stroke = 2.dp) else if (ok) CheckIcon() else Text("!", style = TriTvType.LabelStrong, color = TriTvColors.Error)
             }
             Text(title, style = TriTvType.Label.copy(fontWeight = FontWeight.SemiBold))
         }
@@ -192,18 +196,8 @@ private fun StatusCard(
 }
 
 @Composable
-private fun CheckMark() {
-    Canvas(Modifier.size(16.dp)) {
-        val w = size.width
-        val stroke = 2.5.dp.toPx()
-        drawLine(TriTvColors.SkyBlue, Offset(w * 0.12f, w * 0.52f), Offset(w * 0.4f, w * 0.8f), stroke, StrokeCap.Round)
-        drawLine(TriTvColors.SkyBlue, Offset(w * 0.4f, w * 0.8f), Offset(w * 0.9f, w * 0.25f), stroke, StrokeCap.Round)
-    }
-}
-
-@Composable
 private fun GuideCard(status: GuideStatus, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
-    StatusCard("节目单", ok = status.error == null && (status.loading || status.matched > 0), modifier = modifier) {
+    StatusCard("节目单", ok = status.error == null && status.matched > 0, loading = status.loading, modifier = modifier) {
         val dim = TriTvColors.TextMuted
         when {
             status.loading -> Text("正在下载并解析…", style = TriTvType.Caption, color = dim)
@@ -235,9 +229,15 @@ private fun GuideCard(status: GuideStatus, onRefresh: () -> Unit, modifier: Modi
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (!status.loading) {
-            Spacer(Modifier.height(4.dp))
-            UtilityButton(onClick = onRefresh) { Text("立即刷新节目单", style = TriTvType.Caption) }
+        // Stays in place while refreshing so focus does not jump back to the address field.
+        Spacer(Modifier.height(4.dp))
+        UtilityButton(onClick = { if (!status.loading) onRefresh() }) {
+            if (status.loading) {
+                Spinner(size = 14.dp, stroke = 1.5.dp, color = LocalContentColor.current, trackColor = LocalContentColor.current.copy(alpha = 0.3f))
+                Text("正在刷新…", style = TriTvType.Caption)
+            } else {
+                Text("立即刷新节目单", style = TriTvType.Caption)
+            }
         }
     }
 }

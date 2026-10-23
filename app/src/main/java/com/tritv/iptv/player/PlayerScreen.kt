@@ -4,9 +4,12 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -25,6 +28,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -64,11 +69,14 @@ import com.tritv.iptv.epg.nowAndNext
 import com.tritv.iptv.ui.ChannelJumpPill
 import com.tritv.iptv.ui.ClockText
 import com.tritv.iptv.ui.Dot
+import com.tritv.iptv.ui.EnterEasing
+import com.tritv.iptv.ui.ExitEasing
 import com.tritv.iptv.ui.GroupCaption
 import com.tritv.iptv.ui.KeyCap
 import com.tritv.iptv.ui.ProgressBar
 import com.tritv.iptv.ui.Radius
 import com.tritv.iptv.ui.ScreenMargin
+import com.tritv.iptv.ui.Spinner
 import com.tritv.iptv.ui.StarIcon
 import com.tritv.iptv.ui.TriTvColors
 import com.tritv.iptv.ui.TriTvType
@@ -128,6 +136,9 @@ fun PlayerScreen(
     // Set when the viewer switched lines, so the line is remembered once it plays.
     var pickedByViewer by remember(channel) { mutableStateOf(false) }
     var buffering by remember { mutableStateOf(true) }
+    // Whether any line of this channel has shown a picture yet. After that, switching lines keeps
+    // the last frame on screen (dimmed) instead of going black.
+    var playedOnce by remember(channel) { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(true) }
     // Brief "已加入收藏 / 已取消收藏" note after the viewer toggles the favourite.
     var favoriteNote by remember { mutableStateOf<String?>(null) }
@@ -149,6 +160,7 @@ fun PlayerScreen(
                     error = null
                     if (!ready) {
                         ready = true
+                        playedOnce = true
                         val line = lines[attempts[attemptIndex].sourceIndex]
                         onLineResult(line, true)
                         if (pickedByViewer) onLinePicked(line)
@@ -226,6 +238,28 @@ fun PlayerScreen(
         )
         player.prepare()
     }
+
+    // The loading ring stays up from the start of buffering until the line plays, whatever the info
+    // bar does. It waits 0.4 s before appearing so a line that starts quickly does not flash it.
+    val loading = error == null && (!ready || buffering)
+    var showLoader by remember { mutableStateOf(false) }
+    var loadingSince by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(loading, channel, attemptIndex) {
+        if (!loading) {
+            showLoader = false
+            return@LaunchedEffect
+        }
+        loadingSince = System.currentTimeMillis()
+        if (!showLoader) {
+            delay(LOADER_DELAY_MS)
+            showLoader = true
+        }
+    }
+    val dim by animateFloatAsState(
+        targetValue = if (playedOnce && !ready && error == null) SWITCH_DIM else 0f,
+        animationSpec = tween(200),
+        label = "dim",
+    )
 
     LaunchedEffect(channel, attempt.sourceIndex) {
         showInfo = true
@@ -327,8 +361,39 @@ fun PlayerScreen(
                     this.player = player
                 }
             },
+            // A new channel starts on black; another line of the same channel keeps the last frame.
+            update = { it.setKeepContentOnPlayerReset(playedOnce) },
             modifier = Modifier.fillMaxSize(),
         )
+
+        if (dim > 0f) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = dim }
+                    .background(Color.Black),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showLoader && loading,
+            enter = fadeIn(tween(240, easing = EnterEasing)) + scaleIn(tween(240, easing = EnterEasing), initialScale = 0.96f),
+            exit = fadeOut(tween(200, easing = ExitEasing)) + scaleOut(tween(200, easing = ExitEasing), targetScale = 0.98f),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            // Moved off the first line, by the viewer or because a line failed.
+            val switching = pickedByViewer || attemptIndex > 0
+            val lineLabel = if (lines.size > 1) "线路 ${attempt.sourceIndex + 1}/${lines.size}" else null
+            BufferingIndicator(
+                caption = when {
+                    ready -> "缓冲中"
+                    switching && lineLabel != null -> "正在换到$lineLabel"
+                    else -> "正在连接"
+                },
+                detail = listOfNotNull(channel.name, lineLabel.takeIf { !switching }).joinToString(" · "),
+                since = loadingSince,
+            )
+        }
 
         // Where a burst of Up/Down or the typed digits will land.
         val jumpNumber = when {
@@ -407,9 +472,11 @@ fun PlayerScreen(
                         style = TriTvType.PlayerNumber.tabular(),
                         modifier = Modifier.width(88.dp),
                     )
+                    // The guide makes way for an error, which then gets the full width.
+                    val showGuide = (current != null || next != null) && error == null
                     Column(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = if (current != null || next != null) Modifier.width(260.dp) else Modifier.weight(1f),
+                        modifier = if (showGuide) Modifier.width(300.dp) else Modifier.weight(1f),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(channel.name, style = TriTvType.Tagline, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -427,24 +494,31 @@ fun PlayerScreen(
                                         "线路 ${attempt.sourceIndex + 1}/${lines.size}",
                                         style = TriTvType.Caption,
                                         color = TriTvColors.TextMuted,
+                                        maxLines = 1,
+                                        softWrap = false,
                                     )
                                     // How fast this line answered its last probes.
                                     lineStat?.takeIf { !it.failing }?.latencyMs?.let { ms ->
                                         Dot()
-                                        Text("$ms ms", style = TriTvType.Caption.tabular(), color = TriTvColors.TextMuted)
+                                        Text("$ms ms", style = TriTvType.Caption.tabular(), color = TriTvColors.TextMuted, maxLines = 1, softWrap = false)
                                     }
                                 }
-                                if (buffering) {
+                                // Buffering is shown by the ring in the middle of the picture, not here.
+                                if (noAudio && !buffering) {
                                     Dot()
-                                    Text("缓冲中", style = TriTvType.Caption, color = TriTvColors.SkyBlue)
-                                } else if (noAudio) {
-                                    Dot()
-                                    Text("无声音：音频格式不支持", style = TriTvType.Caption, color = TriTvColors.Error)
+                                    Text(
+                                        "无声音：音频格式不支持",
+                                        style = TriTvType.Caption,
+                                        color = TriTvColors.Error,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
                                 }
                             }
                         }
                     }
-                    if (current != null || next != null) {
+                    if (showGuide) {
                         NowAndNext(current, next, now, Modifier.weight(1f))
                     }
                 }
@@ -464,6 +538,40 @@ fun PlayerScreen(
         }
     }
 }
+
+/**
+ * Ring with a caption under it, centred on the picture. From 5 s on the second line says how long
+ * it has been waiting, so a slow line does not look frozen.
+ */
+@Composable
+private fun BufferingIndicator(caption: String, detail: String, since: Long) {
+    var waited by remember(since) { mutableIntStateOf(0) }
+    LaunchedEffect(since) {
+        while (true) {
+            delay(1_000)
+            waited = ((System.currentTimeMillis() - since) / 1_000).toInt()
+        }
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Spinner()
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(caption, style = TriTvType.Body)
+            Text(
+                if (waited >= 5) "仍在连接 · 已等待 $waited 秒" else detail,
+                style = TriTvType.Caption.tabular(),
+                color = TriTvColors.TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** Buffering shorter than this shows no loading ring. */
+private const val LOADER_DELAY_MS = 400L
+
+/** How dark the last frame goes while another line of the same channel loads. */
+private const val SWITCH_DIM = 0.65f
 
 /** "正在播" with title, time and progress, and "下一个" with its start time. */
 @Composable
