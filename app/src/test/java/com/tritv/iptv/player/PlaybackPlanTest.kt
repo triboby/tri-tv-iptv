@@ -3,6 +3,7 @@ package com.tritv.iptv.player
 import androidx.media3.common.MimeTypes
 import com.tritv.iptv.data.PlaylistEntry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PlaybackPlanTest {
@@ -36,5 +37,19 @@ class PlaybackPlanTest {
             ),
             attempts,
         )
+    }
+
+    @Test
+    fun rtspUrlsUseRtsp() {
+        assertEquals(listOf(MimeTypes.APPLICATION_RTSP), mimeCandidates("rtsp://10.0.0.1:554/live/ch1"))
+    }
+
+    @Test
+    fun failuresWalkForwardThenReturnToSilentLine() {
+        assertEquals(1, nextAttempt(current = 0, count = 3, silentLine = null))
+        assertEquals(2, nextAttempt(current = 1, count = 3, silentLine = 0))
+        assertEquals(0, nextAttempt(current = 2, count = 3, silentLine = 0))
+        assertNull(nextAttempt(current = 2, count = 3, silentLine = null))
+        assertNull(nextAttempt(current = 0, count = 1, silentLine = 0))
     }
 }

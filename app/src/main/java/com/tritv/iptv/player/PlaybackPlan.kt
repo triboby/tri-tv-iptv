@@ -18,6 +18,7 @@ private val progressiveExtensions = setOf("mp4", "flv", "ts", "mkv", "webm", "mo
  * fall back to letting ExoPlayer detect the container.
  */
 internal fun mimeCandidates(url: String): List<String?> {
+    if (url.startsWith("rtsp://", ignoreCase = true)) return listOf(MimeTypes.APPLICATION_RTSP)
     val path = url.substringBefore('?').substringBefore('#').lowercase()
     val ext = path.substringAfterLast('/').substringAfterLast('.', "")
     return when (ext) {
@@ -26,4 +27,15 @@ internal fun mimeCandidates(url: String): List<String?> {
         in progressiveExtensions -> listOf(null)
         else -> listOf(MimeTypes.APPLICATION_M3U8, null)
     }
+}
+
+/**
+ * The attempt to move to after [current] fails, or null to give up. [silentLine] is an
+ * earlier attempt that showed video without decodable audio: once every other attempt
+ * has failed, a silent picture beats an error screen.
+ */
+internal fun nextAttempt(current: Int, count: Int, silentLine: Int?): Int? = when {
+    current + 1 < count -> current + 1
+    silentLine != null && silentLine != current -> silentLine
+    else -> null
 }
