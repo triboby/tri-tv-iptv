@@ -1,5 +1,12 @@
 package com.tritv.iptv.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -30,6 +37,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.PathParser
@@ -165,9 +173,24 @@ private val noGlow = Glow.None
  * with blue text (a blue fill would be indistinguishable); press shrinks it.
  */
 @Composable
-fun PrimaryPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun PrimaryPill(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    /** Shown in place of [text] with a spinner while the action runs; the pill keeps its focus and size. */
+    busyText: String? = null,
+    /** Shown with a check once the action has succeeded. */
+    doneText: String? = null,
+) {
+    val label = when {
+        doneText != null -> PillLabel.Done
+        busyText != null -> PillLabel.Busy
+        else -> PillLabel.Idle
+    }
     Button(
-        onClick = onClick,
+        // Ignore presses while busy instead of disabling, which would drop focus and turn the pill grey.
+        onClick = { if (label == PillLabel.Idle) onClick() },
         enabled = enabled,
         modifier = modifier.height(40.dp),
         contentPadding = PaddingValues(horizontal = 22.dp),
@@ -185,7 +208,35 @@ fun PrimaryPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
         scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 0.95f),
         glow = ButtonDefaults.glow(glow = noGlow, focusedGlow = noGlow, pressedGlow = noGlow),
     ) {
-        Text(text, style = TriTvType.Label)
+        Crossfade(label, animationSpec = tween(150), label = "pill") { shown ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val color = LocalContentColor.current
+                when (shown) {
+                    PillLabel.Idle -> Text(text, style = TriTvType.Label)
+                    PillLabel.Busy -> {
+                        Spinner(size = 16.dp, stroke = 2.dp, color = color, trackColor = color.copy(alpha = 0.3f))
+                        Text(busyText ?: text, style = TriTvType.Label)
+                    }
+                    PillLabel.Done -> {
+                        CheckIcon(16.dp, color)
+                        Text(doneText ?: text, style = TriTvType.Label)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private enum class PillLabel { Idle, Busy, Done }
+
+/** Stroke check mark, for a finished import and status cards. */
+@Composable
+fun CheckIcon(size: Dp = 16.dp, color: Color = TriTvColors.SkyBlue) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val stroke = 2.5.dp.toPx()
+        drawLine(color, Offset(w * 0.12f, w * 0.52f), Offset(w * 0.4f, w * 0.8f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(w * 0.4f, w * 0.8f), Offset(w * 0.9f, w * 0.25f), stroke, StrokeCap.Round)
     }
 }
 
@@ -389,3 +440,48 @@ fun KeyCap(label: String) {
 fun Dot(color: Color = TriTvColors.TextMuted) {
     Text("·", style = TriTvType.Caption, color = color)
 }
+
+/**
+ * Loading ring: a quarter arc turning once every 0.9 s at a steady speed over a faint track.
+ * The only thing on screen that keeps moving while something loads.
+ */
+@Composable
+fun Spinner(
+    size: Dp = 40.dp,
+    stroke: Dp = 3.dp,
+    color: Color = TriTvColors.SkyBlue,
+    trackColor: Color = Color(0x24FFFFFF),
+    modifier: Modifier = Modifier,
+) {
+    val turn by rememberInfiniteTransition(label = "spinner").animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+        label = "turn",
+    )
+    Canvas(modifier.size(size)) {
+        val w = stroke.toPx()
+        val inset = w / 2
+        val arcSize = androidx.compose.ui.geometry.Size(this.size.width - w, this.size.height - w)
+        drawCircle(trackColor, radius = (this.size.minDimension - w) / 2, style = Stroke(w))
+        rotate(turn) {
+            drawArc(color, -90f, 90f, useCenter = false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(w, cap = StrokeCap.Round))
+        }
+    }
+}
+
+/** Placeholder bars breathe between full and 55% opacity, 1.2 s each way, while the real content loads. */
+@Composable
+fun rememberSkeletonAlpha(): Float {
+    val alpha by rememberInfiniteTransition(label = "skeleton").animateFloat(
+        initialValue = 1f,
+        targetValue = 0.55f,
+        animationSpec = infiniteRepeatable(tween(1_200), RepeatMode.Reverse),
+        label = "alpha",
+    )
+    return alpha
+}
+
+/** Ease-out for things arriving, ease-in for things leaving (motion spec on the design canvas). */
+val EnterEasing = androidx.compose.animation.core.CubicBezierEasing(0f, 0f, 0.2f, 1f)
+val ExitEasing = androidx.compose.animation.core.CubicBezierEasing(0.42f, 0f, 1f, 1f)

@@ -1,6 +1,5 @@
 package com.tritv.iptv.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -29,10 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -141,11 +138,16 @@ fun SettingsScreen(
                 Spacer(Modifier.weight(1f))
                 state.error?.let { Text(it, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 2) }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Fixed width so the label can swap to the spinner and back without the row moving.
                     PrimaryPill(
-                        text = if (state.loading) "导入中…" else "保存并导入",
+                        text = "保存并导入",
                         onClick = onLoad,
-                        enabled = !state.loading && state.playlistUrl.isNotBlank(),
-                        modifier = Modifier.focusRequester(buttonFocus),
+                        enabled = state.loading || state.imported || state.playlistUrl.isNotBlank(),
+                        busyText = if (state.loading) "导入中…" else null,
+                        doneText = if (state.imported) "已导入" else null,
+                        modifier = Modifier
+                            .width(148.dp)
+                            .focusRequester(buttonFocus),
                     )
                     if (canGoBack) SecondaryPill("取消", onClick = onCancel)
                     Spacer(Modifier.weight(1f))
@@ -185,23 +187,13 @@ private fun StatusCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                if (ok) CheckMark() else Text("!", style = TriTvType.LabelStrong, color = TriTvColors.Error)
+                if (ok) CheckIcon() else Text("!", style = TriTvType.LabelStrong, color = TriTvColors.Error)
             }
             Text(title, style = TriTvType.Label.copy(fontWeight = FontWeight.SemiBold))
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 28.dp)) {
             content()
         }
-    }
-}
-
-@Composable
-private fun CheckMark() {
-    Canvas(Modifier.size(16.dp)) {
-        val w = size.width
-        val stroke = 2.5.dp.toPx()
-        drawLine(TriTvColors.SkyBlue, Offset(w * 0.12f, w * 0.52f), Offset(w * 0.4f, w * 0.8f), stroke, StrokeCap.Round)
-        drawLine(TriTvColors.SkyBlue, Offset(w * 0.4f, w * 0.8f), Offset(w * 0.9f, w * 0.25f), stroke, StrokeCap.Round)
     }
 }
 

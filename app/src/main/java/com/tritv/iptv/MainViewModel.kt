@@ -53,6 +53,8 @@ data class UiState(
     /** Favourite being moved with Up/Down, or null. */
     val movingFavorite: String? = null,
     val loading: Boolean = false,
+    /** Set for a moment after an import from the source page succeeds, before going back to the list. */
+    val imported: Boolean = false,
     val error: String? = null,
     /** Index into [channels] of the channel being played, or null when browsing. */
     val playingIndex: Int? = null,
@@ -129,7 +131,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (trimmed.isEmpty()) return
         val guideChanged = _state.value.guideUrl.trim() != repo.guideUrl.orEmpty()
         repo.guideUrl = _state.value.guideUrl.trim().ifEmpty { null }
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update { it.copy(loading = true, imported = false, error = null) }
         viewModelScope.launch {
             runCatching { repo.load(trimmed) }
                 .onSuccess { playlist ->
@@ -137,6 +139,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     repo.savedUrl = trimmed
                     playlistGuideUrl = playlist.guideUrl
                     val last = channels.indexOfFirst { it.stableKey == repo.lastChannelKey }.coerceAtLeast(0)
+                    val fromSourcePage = _state.value.showSettings && channels.isNotEmpty()
                     _state.update {
                         it.copy(
                             loading = false,
@@ -148,9 +151,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             focusIndex = last,
                             error = if (channels.isEmpty()) "播放列表中没有频道" else null,
                             loadedAt = System.currentTimeMillis(),
-                            // Back to the list once there is something to show.
-                            showSettings = it.showSettings && channels.isEmpty(),
+                            // Back to the list once there is something to show, after "已导入" has been seen.
+                            showSettings = it.showSettings,
+                            imported = fromSourcePage,
                         )
+                    }
+                    if (fromSourcePage) {
+                        viewModelScope.launch {
+                            delay(IMPORTED_NOTE_MS)
+                            _state.update { if (it.imported) it.copy(showSettings = false, imported = false) else it }
+                        }
                     }
                     refreshGuide(force = guideChanged)
                     lines.prune(channels)
@@ -255,6 +265,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 showSettings = false,
+                imported = false,
                 playlistUrl = repo.savedUrl ?: it.playlistUrl,
                 guideUrl = repo.guideUrl.orEmpty(),
                 error = null,
@@ -351,3 +362,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stop() = _state.update { it.copy(playingIndex = null) }
 }
+
+/** How long "已导入" stays on the source page before the list comes back. */
+private const val IMPORTED_NOTE_MS = 800L

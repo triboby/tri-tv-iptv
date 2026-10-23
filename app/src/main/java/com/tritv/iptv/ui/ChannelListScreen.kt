@@ -1,6 +1,8 @@
 package com.tritv.iptv.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +35,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -41,6 +45,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,6 +84,17 @@ fun ChannelListScreen(
     val moving = state.movingFavorite
 
     val numberEntry = rememberNumberEntry(onPlayNumber)
+
+    // Set while the loading skeleton shows and for a moment after the list replaces it, so the
+    // first rows arrive one after another instead of popping in at once.
+    var entrance by remember { mutableStateOf(false) }
+    val empty = state.channels.isEmpty()
+    LaunchedEffect(entrance, empty) {
+        if (entrance && !empty) {
+            delay(ENTRANCE_WINDOW_MS)
+            entrance = false
+        }
+    }
 
     BackHandler(enabled = moving != null) { onFinishMove(true) }
 
@@ -143,11 +159,16 @@ fun ChannelListScreen(
             SubNav(state, onOpenSettings, onOpenGuide)
 
             if (state.channels.isEmpty()) {
-                EmptyHint(loading = state.loading, onOpenSettings = onOpenSettings)
+                if (state.loading) {
+                    LaunchedEffect(Unit) { entrance = true }
+                    ListSkeleton()
+                } else {
+                    EmptyHint(onOpenSettings = onOpenSettings)
+                }
                 return@Column
             }
 
-            Hero(state, focusedIndex, now)
+            Box(Modifier.arrive(0, entrance)) { Hero(state, focusedIndex, now) }
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -159,7 +180,7 @@ fun ChannelListScreen(
                 if (state.groups.isNotEmpty()) {
                     // Scrolls when there are more groups than fit; the bottom padding keeps the last chip clear of the edge.
                     // OK on a group shows it and moves into the list; resting on one shows it in place.
-                    val groupChip: @Composable (GroupChoice, GroupLabel, Int) -> Unit = { choice, label, count ->
+                    val groupChip: @Composable (GroupChoice, GroupLabel, Int, Int) -> Unit = { choice, label, count, order ->
                         val selected = if (choice.favorites) state.favoritesSelected
                         else !state.favoritesSelected && state.selectedGroup == choice.group
                         GroupChip(
@@ -172,6 +193,7 @@ fun ChannelListScreen(
                                 focusListTick++
                             },
                             modifier = Modifier
+                                .arrive(order, entrance)
                                 .onFocusChanged { if (it.isFocused) focusedGroup = choice else if (focusedGroup == choice) focusedGroup = null }
                                 .then(if (selected) Modifier.focusRequester(selectedGroupRequester) else Modifier),
                         )
@@ -190,17 +212,18 @@ fun ChannelListScreen(
                     ) {
                         if (state.favorites.isNotEmpty()) {
                             item(key = "__favorites__") {
-                                groupChip(GroupChoice(favorites = true), FAVORITES_LABEL, state.favorites.size)
+                                groupChip(GroupChoice(favorites = true), FAVORITES_LABEL, state.favorites.size, 1)
                             }
                         }
                         item(key = "__all__") {
-                            groupChip(GroupChoice(group = null), ALL_LABEL, state.channels.size)
+                            groupChip(GroupChoice(group = null), ALL_LABEL, state.channels.size, 2)
                         }
-                        items(state.groups, key = { it }) { group ->
+                        itemsIndexed(state.groups, key = { _, group -> group }) { i, group ->
                             groupChip(
                                 GroupChoice(group = group),
                                 remember(group) { groupLabel(group) },
                                 state.channels.count { it.group == group },
+                                3 + i,
                             )
                         }
                     }
@@ -227,7 +250,7 @@ fun ChannelListScreen(
                             }
                         },
                 ) {
-                    itemsIndexed(visible, key = { _, index -> index }) { _, index ->
+                    itemsIndexed(visible, key = { _, index -> index }) { pos, index ->
                         val channel = state.channels[index]
                         ChannelRow(
                             state = state,
@@ -238,6 +261,7 @@ fun ChannelListScreen(
                             onClick = { onPlay(index) },
                             onLongClick = { menuFor = channel.stableKey },
                             modifier = Modifier
+                                .arrive(pos + 1, entrance)
                                 .onFocusChanged { if (it.isFocused) focusedIndex = index }
                                 .onKeyEvent { event ->
                                     // Menu adds or removes the focused channel from the favourites.
@@ -293,6 +317,31 @@ fun ChannelListScreen(
 
 /** A chip in the group column: the favourites, or [group] (null for all channels). */
 private data class GroupChoice(val group: String? = null, val favorites: Boolean = false)
+
+/** How long after the skeleton gives way that newly shown rows still play their entrance. */
+private const val ENTRANCE_WINDOW_MS = 1_000L
+
+/** Rows past this many are off screen by the time they would arrive, so they just appear. */
+private const val ENTRANCE_MAX_ORDER = 12
+
+/**
+ * Entrance after the loading skeleton: fade in and rise 8dp over 300ms, each [order] 30ms after
+ * the one before. Without [play] (or past the first screenful) the element is simply there.
+ */
+@Composable
+private fun Modifier.arrive(order: Int, play: Boolean): Modifier {
+    val progress = remember { Animatable(if (play && order <= ENTRANCE_MAX_ORDER) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (progress.value < 1f) {
+            delay(100L + order * 30L)
+            progress.animateTo(1f, tween(300, easing = EnterEasing))
+        }
+    }
+    return graphicsLayer {
+        alpha = progress.value
+        translationY = (1f - progress.value) * 8.dp.toPx()
+    }
+}
 
 /** How long focus rests on a group before the list shows it, so moving through groups stays quick. */
 private const val GROUP_FOCUS_DELAY_MS = 300L
@@ -410,7 +459,7 @@ private fun SubNav(state: UiState, onOpenSettings: () -> Unit, onOpenGuide: () -
                 KeyHint("OK", "放下")
                 KeyHint("返回", "取消")
             }
-            state.loading -> Text("加载中…", style = TriTvType.Caption, color = TriTvColors.TextDim)
+            state.loading -> LoadingStatus()
             state.error != null -> Text(state.error, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 1)
             state.channels.isNotEmpty() -> Text(
                 "${state.channels.size} 个频道 · ${state.groups.size} 个分组",
@@ -573,8 +622,106 @@ private fun GroupChip(
     }
 }
 
+/** Small spinner and "正在加载频道…"; from 3 s on it says how long it has been waiting. */
 @Composable
-private fun EmptyHint(loading: Boolean, onOpenSettings: () -> Unit) {
+private fun LoadingStatus() {
+    val started = remember { System.currentTimeMillis() }
+    var waited by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            waited = ((System.currentTimeMillis() - started) / 1_000).toInt()
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Spinner(size = 14.dp, stroke = 1.5.dp, trackColor = Color(0x29FFFFFF))
+        Text(
+            if (waited >= 3) "仍在加载 · 已等待 $waited 秒" else "正在加载频道…",
+            style = TriTvType.Caption.tabular(),
+            color = TriTvColors.TextDim,
+        )
+    }
+}
+
+/**
+ * Placeholder for the hero, group column and list while the first playlist loads, laid out like
+ * the real screen so nothing jumps when it arrives. Only the bars breathe; the surfaces stay put.
+ */
+@Composable
+private fun ListSkeleton() {
+    val pulse = rememberSkeletonAlpha()
+    val bar = Color.White.copy(alpha = 0.08f * pulse)
+    val faint = Color.White.copy(alpha = 0.06f * pulse)
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(148.dp)
+                .background(TriTvColors.Black),
+        ) {
+            SkeletonBar(260.dp, 34.dp, bar, Radius.Small)
+            SkeletonBar(220.dp, 16.dp, faint)
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(TriTvColors.Ink)
+                .padding(horizontal = ScreenMargin, vertical = 20.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.width(184.dp)) {
+                listOf(1f, 0.86f, 0.92f, 0.74f, 0.82f).forEach { w ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth(w)
+                            .height(40.dp)
+                            .background(faint, Radius.Pill),
+                    )
+                }
+            }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(TriTvColors.Tile, Radius.Card)
+                    .padding(8.dp),
+            ) {
+                listOf(180, 150, 168, 196, 140).forEach { w ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .padding(start = 12.dp, end = 20.dp),
+                    ) {
+                        Box(Modifier.width(36.dp), contentAlignment = Alignment.CenterEnd) { SkeletonBar(26.dp, 12.dp, bar) }
+                        Spacer(Modifier.width(16.dp))
+                        SkeletonBar(w.dp, 14.dp, bar)
+                        Spacer(Modifier.weight(1f))
+                        SkeletonBar(30.dp, 12.dp, faint)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonBar(width: Dp, height: Dp, color: Color, shape: androidx.compose.ui.graphics.Shape = Radius.Pill) {
+    Box(
+        Modifier
+            .width(width)
+            .height(height)
+            .background(color, shape),
+    )
+}
+
+@Composable
+private fun EmptyHint(onOpenSettings: () -> Unit) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -582,8 +729,8 @@ private fun EmptyHint(loading: Boolean, onOpenSettings: () -> Unit) {
             .background(TriTvColors.Black),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (loading) "正在加载频道…" else "还没有频道", style = TriTvType.Display)
-            if (!loading) PrimaryPill("设置直播源", onClick = onOpenSettings)
+            Text("还没有频道", style = TriTvType.Display)
+            PrimaryPill("设置直播源", onClick = onOpenSettings)
         }
     }
 }
