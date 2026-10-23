@@ -35,7 +35,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
@@ -119,8 +118,9 @@ fun ChannelListScreen(
                     if (event.type == KeyEventType.KeyDown) numberEntry.type(digit)
                     return@onPreviewKeyEvent true
                 }
-                // Guide opens the guide grid; consumed so the TV does not show its own message.
-                if (event.key == Key.Guide) {
+                // ≡ (on every BRAVIA remote) or Guide opens the guide grid; consumed so the TV does
+                // not show its own message. Favourites are in the long-press OK menu.
+                if ((event.key == Key.Menu && moving == null) || event.key == Key.Guide) {
                     if (event.type == KeyEventType.KeyDown) onOpenGuide()
                     return@onPreviewKeyEvent true
                 }
@@ -236,15 +236,6 @@ fun ChannelListScreen(
                             onLongClick = { menuFor = channel.stableKey },
                             modifier = Modifier
                                 .onFocusChanged { if (it.isFocused) focusedIndex = index }
-                                .onKeyEvent { event ->
-                                    // Menu adds or removes the focused channel from the favourites.
-                                    if (event.key == Key.Menu && moving == null) {
-                                        if (event.type == KeyEventType.KeyUp) onToggleFavorite(channel.stableKey)
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
                                 .then(if (index == state.focusIndex) Modifier.focusRequester(focusRequester) else Modifier),
                         )
                     }
@@ -408,6 +399,7 @@ private fun SubNav(state: UiState, onOpenSettings: () -> Unit, onOpenGuide: () -
             UtilityButton(onClick = onOpenGuide) {
                 GuideIcon()
                 Text("节目表", style = TriTvType.Caption)
+                KeyCap("≡")
             }
         }
         UtilityButton(onClick = onOpenSettings) {
@@ -514,9 +506,6 @@ private fun ChannelRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-        }
-        if (!state.favoritesSelected && state.selectedGroup == null && channel.group != null) {
-            GroupCaption(channel.group, TriTvType.Caption, dim)
         }
         if (channel.sources.size > 1) {
             Text("${channel.sources.size} 线", style = TriTvType.Caption, color = dim)

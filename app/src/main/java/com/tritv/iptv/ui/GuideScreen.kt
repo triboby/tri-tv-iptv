@@ -214,7 +214,7 @@ private fun GuideKeyHints() {
     ) {
         GuideKeyHint("▲▼", "换频道")
         GuideKeyHint("◀▶", "前后节目")
-        GuideKeyHint("菜单", "回到现在")
+        GuideKeyHint("≡", "回到现在")
         GuideKeyHint("OK", "观看")
         GuideKeyHint("返回", "频道列表")
     }
