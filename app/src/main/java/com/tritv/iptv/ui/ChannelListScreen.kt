@@ -82,8 +82,8 @@ fun ChannelListScreen(
             if (state.groups.isNotEmpty()) {
                 // Scrolls when there are more groups than fit; the bottom padding keeps the last chip clear of the edge.
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp),
                     modifier = Modifier
                         .width(184.dp)
                         .fillMaxHeight(),
@@ -168,7 +168,7 @@ private fun Hero(state: UiState, focusedIndex: Int) {
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
         modifier = Modifier
             .fillMaxWidth()
-            .height(148.dp)
+            .height(128.dp)
             .background(TriTvColors.Black)
             .padding(horizontal = ScreenMargin),
     ) {
@@ -180,7 +180,7 @@ private fun Hero(state: UiState, focusedIndex: Int) {
             overflow = TextOverflow.Ellipsis,
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("%03d".format(index + 1), style = TriTvType.Body, color = TriTvColors.TextMuted)
+            Text("%03d".format(index + 1), style = TriTvType.Body.tabular(), color = TriTvColors.TextMuted)
             channel.group?.let {
                 Dot()
                 GroupCaption(it, TriTvType.Body, TriTvColors.TextMuted)
@@ -201,7 +201,7 @@ private fun ChannelRow(state: UiState, index: Int, onClick: () -> Unit, modifier
         val dim = LocalContentColor.current.copy(alpha = 0.6f)
         Text(
             "%03d".format(index + 1),
-            style = TriTvType.Label,
+            style = TriTvType.Label.tabular(),
             color = dim,
             textAlign = TextAlign.End,
             modifier = Modifier.width(36.dp),
@@ -246,7 +246,7 @@ private fun GroupChip(group: String?, count: Int, selected: Boolean, onClick: ()
         )
         Text(
             "$count",
-            style = TriTvType.Small.copy(fontSize = 13.sp, lineHeight = 20.sp),
+            style = TriTvType.Small.copy(fontSize = 13.sp, lineHeight = 20.sp).tabular(),
             color = LocalContentColor.current.copy(alpha = 0.6f),
         )
     }

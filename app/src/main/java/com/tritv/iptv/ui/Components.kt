@@ -133,7 +133,7 @@ fun rememberNow(): Long {
 
 @Composable
 fun ClockText(style: TextStyle, color: Color = TriTvColors.Text) {
-    Text(timeText(rememberNow()), style = style, color = color)
+    Text(timeText(rememberNow()), style = style.tabular(), color = color)
 }
 
 /** Thin black bar at the very top: mark and name on the left, date and time on the right. */
@@ -153,8 +153,8 @@ fun TopBar(trailing: @Composable RowScope.() -> Unit = {}) {
         Text("Tri TV", style = TriTvType.Small.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold))
         Spacer(Modifier.weight(1f))
         trailing()
-        Text(dateText(now), style = TriTvType.Small, color = TriTvColors.TextMuted)
-        Text(timeText(now), style = TriTvType.Small.copy(fontWeight = FontWeight.SemiBold))
+        Text(dateText(now), style = TriTvType.Small.tabular(), color = TriTvColors.TextMuted)
+        Text(timeText(now), style = TriTvType.Small.copy(fontWeight = FontWeight.SemiBold).tabular())
     }
 }
 
@@ -189,7 +189,7 @@ fun PrimaryPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
     }
 }
 
-/** Ghost pill: blue outline and text, filled blue when focused. */
+/** Ghost pill: blue outline and text; focus turns it white with blue text, like [PrimaryPill]. */
 @Composable
 fun SecondaryPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Button(
@@ -200,10 +200,10 @@ fun SecondaryPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
         colors = ButtonDefaults.colors(
             containerColor = Color.Transparent,
             contentColor = TriTvColors.SkyBlue,
-            focusedContainerColor = TriTvColors.Focus,
-            focusedContentColor = TriTvColors.Text,
-            pressedContainerColor = TriTvColors.Focus,
-            pressedContentColor = TriTvColors.Text,
+            focusedContainerColor = TriTvColors.Text,
+            focusedContentColor = TriTvColors.Action,
+            pressedContainerColor = TriTvColors.Text,
+            pressedContentColor = TriTvColors.Action,
         ),
         border = ButtonDefaults.border(
             border = Border(BorderStroke(1.dp, TriTvColors.SkyBlue), shape = Radius.Pill),

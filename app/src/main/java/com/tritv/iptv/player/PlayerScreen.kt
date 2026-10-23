@@ -60,6 +60,7 @@ import com.tritv.iptv.ui.Radius
 import com.tritv.iptv.ui.ScreenMargin
 import com.tritv.iptv.ui.TriTvColors
 import com.tritv.iptv.ui.TriTvType
+import com.tritv.iptv.ui.tabular
 import kotlinx.coroutines.delay
 
 private const val DEFAULT_USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
@@ -215,7 +216,7 @@ fun PlayerScreen(
             ) {
                 Text(
                     "%03d".format(channelNumber),
-                    style = TriTvType.PlayerNumber,
+                    style = TriTvType.PlayerNumber.tabular(),
                     modifier = Modifier.width(88.dp),
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {

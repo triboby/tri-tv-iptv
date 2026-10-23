@@ -49,18 +49,21 @@ val Inter = FontFamily(
 
 /**
  * Type ladder in dp-equivalent sp. Weights are only 300 / 400 / 600; display sizes are tracked tight.
- * Every style uses tabular digits so channel numbers, counts and the clock line up.
+ * Use [tabular] on numbers that should line up (channel numbers, counts, the clock), not on names.
  */
 object TriTvType {
-    val Display = TextStyle(fontFamily = Inter, fontFeatureSettings = "tnum", fontWeight = FontWeight.SemiBold, fontSize = 40.sp, lineHeight = 44.sp, letterSpacing = (-0.4).sp)
+    val Display = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 40.sp, lineHeight = 44.sp, letterSpacing = (-0.4).sp)
     val PlayerNumber = Display
-    val Tagline = TextStyle(fontFamily = Inter, fontFeatureSettings = "tnum", fontWeight = FontWeight.SemiBold, fontSize = 21.sp, lineHeight = 26.sp, letterSpacing = 0.23.sp)
-    val Body = TextStyle(fontFamily = Inter, fontFeatureSettings = "tnum", fontWeight = FontWeight.Normal, fontSize = 17.sp, lineHeight = 24.sp, letterSpacing = (-0.37).sp)
-    val Label = TextStyle(fontFamily = Inter, fontFeatureSettings = "tnum", fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 20.sp, letterSpacing = (-0.22).sp)
+    val Tagline = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 21.sp, lineHeight = 26.sp, letterSpacing = 0.23.sp)
+    val Body = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Normal, fontSize = 17.sp, lineHeight = 24.sp, letterSpacing = (-0.37).sp)
+    val Label = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 20.sp, letterSpacing = (-0.22).sp)
     val LabelStrong = Label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-    val Caption = TextStyle(fontFamily = Inter, fontFeatureSettings = "tnum", fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = (-0.22).sp)
-    val Small = TextStyle(fontFamily = Inter, fontFeatureSettings = "tnum", fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = (-0.12).sp)
+    val Caption = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = (-0.22).sp)
+    val Small = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = (-0.12).sp)
 }
+
+/** Tabular (fixed-width) digits, for numbers in columns and the clock. */
+fun TextStyle.tabular() = copy(fontFeatureSettings = "tnum")
 
 private val colors = darkColorScheme(
     primary = TriTvColors.Action,
