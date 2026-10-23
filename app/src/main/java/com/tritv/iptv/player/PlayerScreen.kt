@@ -266,6 +266,9 @@ fun PlayerScreen(
                     isFocusable = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     setKeepContentOnPlayerReset(false)
+                    // Live TV gets no remote input for long stretches; without this the TV's
+                    // screensaver starts mid-programme. Dropped when the player screen leaves.
+                    keepScreenOn = true
                     this.player = player
                 }
             },
