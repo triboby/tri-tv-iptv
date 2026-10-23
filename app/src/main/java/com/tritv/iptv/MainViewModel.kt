@@ -268,11 +268,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun closeGuide() = _state.update { it.copy(showGuide = false) }
 
     fun selectGroup(group: String?) = _state.update { s ->
+        if (!s.favoritesSelected && s.selectedGroup == group) return@update s
         val next = s.copy(selectedGroup = group, favoritesSelected = false, movingFavorite = null)
         next.copy(focusIndex = next.visibleIndices.firstOrNull() ?: 0)
     }
 
     fun selectFavorites() = _state.update { s ->
+        if (s.favoritesSelected) return@update s
         val next = s.copy(favoritesSelected = true, movingFavorite = null)
         next.copy(focusIndex = next.visibleIndices.firstOrNull() ?: 0)
     }
@@ -332,9 +334,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return visible[Math.floorMod(pos + delta, visible.size)]
     }
 
-    /** Plays the channel with list number [number] (1-based, as shown), if there is one. */
+    /**
+     * Plays the channel with list number [number] (1-based, as shown), if there is one. Numbers
+     * count over all channels, so when the channel is outside the current list the list becomes
+     * all channels and channel up/down carries on from there.
+     */
     fun playNumber(number: Int) {
-        if (number - 1 in _state.value.channels.indices) play(number - 1)
+        val index = number - 1
+        if (index !in _state.value.channels.indices) return
+        _state.update { s ->
+            if (index in s.visibleIndices) s
+            else s.copy(selectedGroup = null, favoritesSelected = false, movingFavorite = null)
+        }
+        play(index)
     }
 
     fun stop() = _state.update { it.copy(playingIndex = null) }

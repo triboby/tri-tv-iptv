@@ -70,6 +70,63 @@ class XmltvParserTest {
     }
 
     @Test
+    fun resolvesOverlappingProgrammes() {
+        val guide = parse(
+            """
+            <tv>
+              <programme start="20261023203000 +0800" stop="20261023212300 +0800" channel="X"><title>A</title></programme>
+              <programme start="20261023211000 +0800" stop="20261023221700 +0800" channel="X"><title>B</title></programme>
+              <programme start="20261023212300 +0800" stop="20261023221700 +0800" channel="X"><title>inside B</title></programme>
+              <programme start="20261023221700 +0800" stop="20261023221730 +0800" channel="X"><title>30 seconds</title></programme>
+              <programme start="20261023221730 +0800" stop="20261023230000 +0800" channel="X"><title>C</title></programme>
+            </tv>
+            """.trimIndent(),
+        )
+        assertEquals(listOf("A", "B", "C"), guide.getValue("X").map { it.title })
+        assertEquals(XmltvParser.parseTime("20261023211000 +0800"), guide.getValue("X")[0].stop)
+    }
+
+    @Test
+    fun prefersTheLocalOffsetWhenAChannelIsAlsoListedInUtc() {
+        // CCTV-3 as served on 2026-10-23: a second source lists Beijing time labelled +0000.
+        val guide = parse(
+            """
+            <tv>
+              <channel id="CCTV-3"><display-name lang="zh">CCTV-3</display-name></channel>
+              <programme channel="CCTV-3" start="20261023112900 +0000" stop="20261023130000 +0000"><title>越战越勇-2026-33</title></programme>
+              <programme channel="CCTV-3" start="20261023112945 +0000" stop="20261023130000 +0000"><title>越战越勇-2026-33</title></programme>
+              <programme channel="CCTV-3" start="20261023130000 +0000" stop="20261023132300 +0000"><title>文化十分-2026-214</title></programme>
+              <programme channel="CCTV-3" start="20261023130000 +0000" stop="20261023132340 +0000"><title>文化十分-2026-214</title></programme>
+              <programme channel="CCTV-3" start="20261023132300 +0000" stop="20261023150800 +0000"><title>综艺喜乐汇</title></programme>
+              <programme channel="CCTV-3" start="20261023132340 +0000" stop="20261023150845 +0000"><title>综艺喜乐汇-2025-1422 文艺专题</title></programme>
+              <programme channel="CCTV-3" start="20261023150800 +0000" stop="20261023151800 +0000"><title>连环话-千里走单骑</title></programme>
+              <programme channel="CCTV-3" start="20261023150845 +0000" stop="20261023151845 +0000"><title>连环话-千里走单骑</title></programme>
+              <programme channel="CCTV-3" start="20261023151800 +0000" stop="20261023152700 +0000"><title>综艺喜乐汇</title></programme>
+              <programme channel="CCTV-3" start="20261023151845 +0000" stop="20261023152735 +0000"><title>综艺喜乐汇-2026-1128 岁月长情</title></programme>
+              <programme channel="CCTV-3" start="20261023152700 +0000" stop="20261023165900 +0000"><title>全民畅舞-26</title></programme>
+              <programme channel="CCTV-3" start="20261023152735 +0000" stop="20261023165945 +0000"><title>全民畅舞-26</title></programme>
+              <programme channel="CCTV-3" start="20261023193000 +0800" stop="20261023201100 +0800"><title>纪念中国工农红军长征胜利90周年电视文艺晚会-上</title></programme>
+              <programme channel="CCTV-3" start="20261023201100 +0800" stop="20261023204700 +0800"><title>纪念中国工农红军长征胜利90周年电视文艺晚会-中</title></programme>
+              <programme channel="CCTV-3" start="20261023204700 +0800" stop="20261023211030 +0800"><title>纪念中国工农红军长征胜利90周年电视文艺晚会-下</title></programme>
+              <programme channel="CCTV-3" start="20261023211030 +0800" stop="20261023221700 +0800"><title>新花路放—最美的心愿之旅-10</title></programme>
+              <programme channel="CCTV-3" start="20261023221700 +0800" stop="20261023224945 +0800"><title>综艺喜乐汇-2026-1381 多彩少年 8</title></programme>
+              <programme channel="CCTV-3" start="20261023224945 +0800" stop="20261023233545 +0800"><title>综艺喜乐汇-2026-1168 以法之名26/36</title></programme>
+            </tv>
+            """.trimIndent(),
+        )
+        val list = guide.getValue("CCTV-3")
+        val t = { s: String -> XmltvParser.parseTime("20261023$s +0800")!! }
+        assertEquals(
+            listOf("193000", "201100", "204700", "211030", "221700", "224945"),
+            list.map { java.text.SimpleDateFormat("HHmmss").apply { timeZone = java.util.TimeZone.getTimeZone("GMT+8") }.format(it.start) },
+        )
+        val now = list.first { it.isOn(t("213800")) }
+        assertEquals("新花路放—最美的心愿之旅-10", now.title)
+        assertEquals(t("211030"), now.start)
+        assertEquals(t("221700"), now.stop)
+    }
+
+    @Test
     fun skipsProgrammesWithoutTitleOrValidTimes() {
         val guide = parse(
             """

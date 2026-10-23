@@ -113,6 +113,8 @@ fun GuideScreen(state: UiState, onPlay: (Int) -> Unit, onBack: () -> Unit) {
                         moveCursor(next?.start ?: (cursor + HALF_HOUR))
                         true
                     }
+                    // Guide again closes it; handled so the TV does not show its own message.
+                    Key.Guide -> { onBack(); true }
                     Key.Menu -> {
                         cursor = now
                         windowStart = floorHalfHour(now)
