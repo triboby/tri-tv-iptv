@@ -521,9 +521,6 @@ private fun ChannelRow(
                 modifier = Modifier.weight(1f),
             )
         }
-        if (!state.favoritesSelected && state.selectedGroup == null && channel.group != null) {
-            GroupCaption(channel.group, TriTvType.Caption, dim)
-        }
         if (channel.sources.size > 1) {
             Text("${channel.sources.size} 线", style = TriTvType.Caption, color = dim)
         }
