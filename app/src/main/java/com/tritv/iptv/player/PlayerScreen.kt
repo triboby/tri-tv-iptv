@@ -48,6 +48,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -121,6 +124,26 @@ fun PlayerScreen(
     }
     DisposableEffect(player) {
         onDispose { player.release() }
+    }
+
+    // Leaving the app with Home keeps this screen alive in the background, so stop the stream
+    // (sound and download) while the app is hidden and reconnect the same line on return.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> player.stop()
+                // Back to the live edge: the old position may have left the live window, which
+                // would fail as an error and wrongly move on to the next line.
+                Lifecycle.Event.ON_START -> if (player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0) {
+                    player.seekToDefaultPosition()
+                    player.prepare()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val attempts = remember(channel, lines) { playbackAttempts(lines) }
