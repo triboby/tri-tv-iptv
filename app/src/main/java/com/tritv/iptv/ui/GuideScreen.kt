@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.tritv.iptv.UiState
 import com.tritv.iptv.epg.Programme
@@ -131,11 +132,6 @@ fun GuideScreen(state: UiState, onPlay: (Int) -> Unit, onBack: () -> Unit) {
             }
             .focusable(),
     ) {
-        TopBar {
-            KeyCap("返回")
-            Text("频道列表", style = TriTvType.Small, color = TriTvColors.TextMuted)
-            Spacer(Modifier.width(12.dp))
-        }
         GuideNav(windowStart)
 
         Column(
@@ -143,7 +139,7 @@ fun GuideScreen(state: UiState, onPlay: (Int) -> Unit, onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(TriTvColors.Ink)
-                .padding(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 16.dp),
+                .padding(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 12.dp),
         ) {
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                 val track = maxWidth - HEAD_WIDTH - 8.dp
@@ -182,6 +178,7 @@ fun GuideScreen(state: UiState, onPlay: (Int) -> Unit, onBack: () -> Unit) {
                 }
             }
             DetailPanel(state, rows.getOrNull(row), selected, now)
+            GuideKeyHints()
         }
     }
 }
@@ -194,26 +191,32 @@ private fun hm(t: Long) = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
 
 @Composable
 private fun GuideNav(windowStart: Long) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .background(TriTvColors.Ink.copy(alpha = 0.8f))
-            .padding(horizontal = ScreenMargin),
-    ) {
-        Text("节目表", style = TriTvType.Tagline)
+    TitleBar(spacing = 12.dp) {
+        Text("节目表", style = TriTvType.Tagline.copy(lineHeight = 24.sp))
         Text(
             SimpleDateFormat("M月d日 EEEE", Locale.CHINA).format(windowStart),
             style = TriTvType.Caption,
             color = TriTvColors.TextMuted,
         )
         Spacer(Modifier.weight(1f))
+    }
+}
+
+/** Remote keys for the grid, in a row of their own under the detail panel so the title bar stays uncrowded. */
+@Composable
+private fun GuideKeyHints() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.End),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(20.dp),
+    ) {
         GuideKeyHint("▲▼", "换频道")
         GuideKeyHint("◀▶", "前后节目")
         GuideKeyHint("菜单", "回到现在")
         GuideKeyHint("OK", "观看")
+        GuideKeyHint("返回", "频道列表")
     }
 }
 

@@ -29,11 +29,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -139,7 +137,6 @@ fun ChannelListScreen(
                 .fillMaxSize()
                 .background(TriTvColors.Black),
         ) {
-            TopBar()
             SubNav(state, onOpenSettings, onOpenGuide)
 
             if (state.channels.isEmpty()) {
@@ -376,19 +373,8 @@ private fun MissingFavoriteRow(key: String, onLongClick: () -> Unit) {
 /** Frosted second bar: page name on the left, playlist stats and the guide and source buttons on the right. */
 @Composable
 private fun SubNav(state: UiState, onOpenSettings: () -> Unit, onOpenGuide: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .background(TriTvColors.Ink.copy(alpha = 0.8f))
-            .drawBehind {
-                drawLine(TriTvColors.Hairline, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
-            }
-            .padding(horizontal = ScreenMargin),
-    ) {
-        Text(if (state.favoritesSelected) "收藏" else "频道", style = TriTvType.Tagline)
+    TitleBar {
+        TitleWithMark(if (state.favoritesSelected) "收藏" else "频道")
         if (state.movingFavorite != null) {
             Box(
                 contentAlignment = Alignment.Center,
@@ -441,7 +427,7 @@ private fun Hero(state: UiState, focusedIndex: Int, now: Long) {
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
         modifier = Modifier
             .fillMaxWidth()
-            .height(148.dp)
+            .height(144.dp)
             .background(TriTvColors.Black)
             .padding(horizontal = ScreenMargin),
     ) {

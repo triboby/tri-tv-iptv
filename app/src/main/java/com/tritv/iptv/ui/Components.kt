@@ -8,12 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -115,7 +116,6 @@ fun GroupCaption(group: String, style: TextStyle, color: Color) {
     }
 }
 
-private fun dateText(now: Long) = SimpleDateFormat("M月d日 EEEE", Locale.CHINA).format(now)
 private fun timeText(now: Long) = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
 
 /** The current time, recomposing once a minute. */
@@ -136,25 +136,41 @@ fun ClockText(style: TextStyle, color: Color = TriTvColors.Text) {
     Text(timeText(rememberNow()), style = style.tabular(), color = color)
 }
 
-/** Thin black bar at the very top: mark and name on the left, date and time on the right. */
+/**
+ * The one bar at the top of a screen: [content] on the left (title, actions), then a hairline divider
+ * and the clock at the far right, everything centred in 68dp.
+ */
 @Composable
-fun TopBar(trailing: @Composable RowScope.() -> Unit = {}) {
-    val now = rememberNow()
+fun TitleBar(spacing: Dp = 16.dp, content: @Composable RowScope.() -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .background(TriTvColors.Black)
+            .height(68.dp)
+            .background(TriTvColors.Ink.copy(alpha = 0.8f))
+            .drawBehind {
+                drawLine(TriTvColors.Hairline, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
+            }
             .padding(horizontal = ScreenMargin),
     ) {
-        LogoMark(20.dp)
-        Text("Tri TV", style = TriTvType.Small.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold))
-        Spacer(Modifier.weight(1f))
-        trailing()
-        Text(dateText(now), style = TriTvType.Small.tabular(), color = TriTvColors.TextMuted)
-        Text(timeText(now), style = TriTvType.Small.copy(fontWeight = FontWeight.SemiBold).tabular())
+        content()
+        Box(
+            Modifier
+                .width(1.dp)
+                .height(20.dp)
+                .background(TriTvColors.Text.copy(alpha = 0.16f)),
+        )
+        ClockText(TriTvType.Tagline.copy(lineHeight = 24.sp))
+    }
+}
+
+/** The mark and a title, for the left end of a [TitleBar]. */
+@Composable
+fun TitleWithMark(title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LogoMark(36.dp)
+        Text(title, style = TriTvType.Tagline.copy(lineHeight = 24.sp))
     }
 }
 
