@@ -40,23 +40,31 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
+import com.tritv.iptv.GuideStatus
 import com.tritv.iptv.UiState
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-/** The playlist source page: one M3U address, import, and the result of the last import. */
+/**
+ * The playlist source page: the M3U address and an optional guide (XMLTV) address on the left,
+ * the result of the last playlist import and guide download on the right.
+ */
 @Composable
 fun SettingsScreen(
     state: UiState,
     onUrlChange: (String) -> Unit,
+    onGuideUrlChange: (String) -> Unit,
     onLoad: () -> Unit,
     onCancel: () -> Unit,
+    onRefreshGuide: () -> Unit,
 ) {
     val canGoBack = state.channels.isNotEmpty()
     val fieldFocus = remember { FocusRequester() }
+    val guideFocus = remember { FocusRequester() }
     val buttonFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 
@@ -78,86 +86,168 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 24.dp, bottom = 20.dp),
+                .padding(top = 20.dp, bottom = 18.dp),
         ) {
             Text("直播源", style = TriTvType.Display)
-            Text("填入 M3U 播放列表地址，支持 http 和 https。", style = TriTvType.Body, color = TriTvColors.TextMuted)
+            Text("播放列表必填；节目单可留空，留空时用播放列表里自带的地址。", style = TriTvType.Body, color = TriTvColors.TextMuted)
         }
 
-        Box(
-            contentAlignment = Alignment.TopCenter,
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .background(TriTvColors.Ink)
                 .padding(horizontal = ScreenMargin, vertical = 24.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.width(600.dp)) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(TriTvColors.Tile, Radius.Card)
-                        .padding(horizontal = 24.dp, vertical = 20.dp),
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("播放列表地址", style = TriTvType.LabelStrong)
-                        UrlField(
-                            value = state.playlistUrl,
-                            onValueChange = onUrlChange,
-                            onDone = onLoad,
-                            next = buttonFocus,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(fieldFocus),
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PrimaryPill(
-                            text = if (state.loading) "导入中…" else "导入并返回",
-                            onClick = onLoad,
-                            enabled = !state.loading && state.playlistUrl.isNotBlank(),
-                            modifier = Modifier.focusRequester(buttonFocus),
-                        )
-                        if (canGoBack) SecondaryPill("取消", onClick = onCancel)
-                        Spacer(Modifier.weight(1f))
-                        Text("遥控器 OK 键弹出输入法", style = TriTvType.Small, color = TriTvColors.TextDim)
-                    }
-                    state.error?.let { Text(it, style = TriTvType.Caption, color = TriTvColors.Error) }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(TriTvColors.Tile, Radius.Card)
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("播放列表地址", style = TriTvType.LabelStrong)
+                    UrlField(
+                        value = state.playlistUrl,
+                        onValueChange = onUrlChange,
+                        onDone = onLoad,
+                        next = guideFocus,
+                        placeholder = "http://…/playlist.m3u",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(fieldFocus),
+                    )
                 }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("节目单地址（XMLTV）", style = TriTvType.LabelStrong)
+                        Text("可选", style = TriTvType.Caption, color = TriTvColors.TextDim)
+                    }
+                    UrlField(
+                        value = state.guideUrl,
+                        onValueChange = onGuideUrlChange,
+                        onDone = onLoad,
+                        next = buttonFocus,
+                        placeholder = "留空则使用播放列表自带的节目单",
+                        icon = { GuideIcon(color = TriTvColors.TextDim) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(guideFocus),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                state.error?.let { Text(it, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 2) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PrimaryPill(
+                        text = if (state.loading) "导入中…" else "保存并导入",
+                        onClick = onLoad,
+                        enabled = !state.loading && state.playlistUrl.isNotBlank(),
+                        modifier = Modifier.focusRequester(buttonFocus),
+                    )
+                    if (canGoBack) SecondaryPill("取消", onClick = onCancel)
+                    Spacer(Modifier.weight(1f))
+                    Text("遥控器 OK 键弹出输入法", style = TriTvType.Small, color = TriTvColors.TextDim)
+                }
+            }
 
-                if (state.loadedAt != null && state.channels.isNotEmpty()) {
+            if (state.loadedAt != null && state.channels.isNotEmpty()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .width(300.dp)
+                        .fillMaxHeight(),
+                ) {
                     LastImportCard(state, state.loadedAt)
+                    state.guideStatus?.let { GuideCard(it, onRefreshGuide, Modifier.weight(1f)) }
                 }
             }
         }
     }
 }
 
+/** A status card: a check (or warning) slot, a title, then caption lines indented under the title. */
+@Composable
+private fun StatusCard(
+    title: String,
+    ok: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(TriTvColors.Tile, Radius.Card)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                if (ok) CheckMark() else Text("!", style = TriTvType.LabelStrong, color = TriTvColors.Error)
+            }
+            Text(title, style = TriTvType.Label.copy(fontWeight = FontWeight.SemiBold))
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 28.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun CheckMark() {
+    Canvas(Modifier.size(16.dp)) {
+        val w = size.width
+        val stroke = 2.5.dp.toPx()
+        drawLine(TriTvColors.SkyBlue, Offset(w * 0.12f, w * 0.52f), Offset(w * 0.4f, w * 0.8f), stroke, StrokeCap.Round)
+        drawLine(TriTvColors.SkyBlue, Offset(w * 0.4f, w * 0.8f), Offset(w * 0.9f, w * 0.25f), stroke, StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun GuideCard(status: GuideStatus, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
+    StatusCard("节目单", ok = status.error == null, modifier = modifier) {
+        val dim = TriTvColors.TextMuted
+        when {
+            status.loading -> Text("正在下载并解析…", style = TriTvType.Caption, color = dim)
+            status.error != null -> Text(status.error, style = TriTvType.Caption, color = dim, maxLines = 3)
+            else -> {
+                status.downloadedAt?.let {
+                    Text(dayTime(it) + " 更新 · 每 12 小时自动刷新", style = TriTvType.Caption, color = dim)
+                }
+                Text(
+                    "已匹配 ${status.matched} / ${status.total} 个频道",
+                    style = TriTvType.Caption.tabular(),
+                    color = dim,
+                )
+                ProgressBar(
+                    if (status.total == 0) 0f else status.matched.toFloat() / status.total,
+                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+                if (status.fromPlaylist) Text("地址来自播放列表", style = TriTvType.Small, color = TriTvColors.TextDim)
+            }
+        }
+        if (!status.loading) {
+            Spacer(Modifier.height(4.dp))
+            UtilityButton(onClick = onRefresh) { Text("立即刷新节目单", style = TriTvType.Caption) }
+        }
+    }
+}
+
+private fun dayTime(t: Long): String {
+    val today = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
+    val prefix = if (today.format(t) == today.format(System.currentTimeMillis())) "今天" else SimpleDateFormat("M月d日", Locale.CHINA).format(t)
+    return prefix + " " + SimpleDateFormat("HH:mm", Locale.getDefault()).format(t)
+}
+
 @Composable
 private fun LastImportCard(state: UiState, loadedAt: Long) {
     val lines = state.channels.sumOf { it.sources.size }
-    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(loadedAt)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .background(TriTvColors.Tile, Radius.Card)
-            .padding(horizontal = 20.dp),
-    ) {
-        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.size(16.dp)) {
-                val w = size.width
-                val stroke = 2.5.dp.toPx()
-                drawLine(TriTvColors.SkyBlue, Offset(w * 0.12f, w * 0.52f), Offset(w * 0.4f, w * 0.8f), stroke, StrokeCap.Round)
-                drawLine(TriTvColors.SkyBlue, Offset(w * 0.4f, w * 0.8f), Offset(w * 0.9f, w * 0.25f), stroke, StrokeCap.Round)
-            }
-        }
-        Text("上次导入成功", style = TriTvType.Label, modifier = Modifier.weight(1f))
+    StatusCard("播放列表", ok = true) {
+        Text(dayTime(loadedAt) + " 导入", style = TriTvType.Caption, color = TriTvColors.TextMuted)
         Text(
-            "$time · ${state.channels.size} 个频道 · ${state.groups.size} 个分组 · $lines 条线路",
-            style = TriTvType.Caption,
+            "${state.channels.size} 个频道 · ${state.groups.size} 个分组 · $lines 条线路",
+            style = TriTvType.Caption.tabular(),
             color = TriTvColors.TextMuted,
         )
     }
@@ -173,7 +263,9 @@ private fun UrlField(
     onValueChange: (String) -> Unit,
     onDone: () -> Unit,
     next: FocusRequester,
+    placeholder: String,
     modifier: Modifier = Modifier,
+    icon: @Composable () -> Unit = { LinkIcon(color = TriTvColors.TextDim) },
 ) {
     var focused by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
@@ -238,10 +330,10 @@ private fun UrlField(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxHeight(),
             ) {
-                LinkIcon(color = TriTvColors.TextDim)
+                icon()
                 Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.weight(1f)) {
                     if (value.isEmpty()) {
-                        Text("http://…/playlist.m3u", style = TriTvType.Body, color = TriTvColors.TextDim, maxLines = 1)
+                        Text(placeholder, style = TriTvType.Body, color = TriTvColors.TextDim, maxLines = 1)
                     }
                     inner()
                 }

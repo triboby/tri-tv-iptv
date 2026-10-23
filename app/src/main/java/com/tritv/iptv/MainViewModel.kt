@@ -4,21 +4,47 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tritv.iptv.data.Channel
+import com.tritv.iptv.data.FavoriteList
 import com.tritv.iptv.data.PlaylistRepository
 import com.tritv.iptv.data.loadErrorMessage
+import com.tritv.iptv.epg.GuideRepository
+import com.tritv.iptv.epg.Programme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** State of the programme guide for the source page's status card. */
+data class GuideStatus(
+    val loading: Boolean = false,
+    /** When the guide file in use was downloaded. */
+    val downloadedAt: Long? = null,
+    /** Channels with programmes, out of [total]. */
+    val matched: Int = 0,
+    val total: Int = 0,
+    val error: String? = null,
+    /** True when the address came from the playlist header rather than the viewer. */
+    val fromPlaylist: Boolean = false,
+)
+
 data class UiState(
     val playlistUrl: String = "",
+    /** Guide address the viewer typed; empty to use the playlist's own. */
+    val guideUrl: String = "",
     val channels: List<Channel> = emptyList(),
     /** Distinct group titles in playlist order. */
     val groups: List<String> = emptyList(),
-    /** Group shown in the list, or null for all channels. */
+    /** Group shown in the list, or null for all channels. Ignored while [favoritesSelected]. */
     val selectedGroup: String? = null,
+    /** Whether the list shows the favourites instead of a group. */
+    val favoritesSelected: Boolean = false,
+    /** Favourite [Channel.stableKey]s in the viewer's order. */
+    val favorites: List<String> = emptyList(),
+    /** Favourite being moved with Up/Down, or null. */
+    val movingFavorite: String? = null,
     val loading: Boolean = false,
     val error: String? = null,
     /** Index into [channels] of the channel being played, or null when browsing. */
@@ -27,21 +53,52 @@ data class UiState(
     val focusIndex: Int = 0,
     /** Whether the playlist source page is shown instead of the channel list. */
     val showSettings: Boolean = false,
+    /** Whether the programme guide grid is shown. */
+    val showGuide: Boolean = false,
     /** When the current channel list was last loaded, for the source page's status card. */
     val loadedAt: Long? = null,
+    /** Guide programmes per [Channel.stableKey], sorted by start time. */
+    val programmes: Map<String, List<Programme>> = emptyMap(),
+    val guideStatus: GuideStatus? = null,
 ) {
-    /** Indices into [channels] shown under [selectedGroup]; channel switching stays within them. */
+    /** Indices into [channels] shown in the list; channel switching stays within them. */
     val visibleIndices: List<Int>
-        get() = if (selectedGroup == null) channels.indices.toList()
-        else channels.indices.filter { channels[it].group == selectedGroup }
+        get() = when {
+            favoritesSelected -> favorites.mapNotNull { key ->
+                channels.indexOfFirst { it.stableKey == key }.takeIf { it >= 0 }
+            }
+            selectedGroup == null -> channels.indices.toList()
+            else -> channels.indices.filter { channels[it].group == selectedGroup }
+        }
+
+    /** Favourites whose channel is no longer in the playlist, kept so they come back when it returns. */
+    val missingFavorites: List<String>
+        get() = favorites.filter { key -> channels.none { it.stableKey == key } }
+
+    fun isFavorite(channel: Channel) = channel.stableKey in favorites
+
+    fun programmesOf(channel: Channel): List<Programme> = programmes[channel.stableKey].orEmpty()
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = PlaylistRepository(app)
+    private val guideRepo = GuideRepository(app)
+
+    /** Guide address from the last loaded playlist's header. */
+    private var playlistGuideUrl: String? = null
+    private var guideJob: Job? = null
+
+    /** Favourites as they were when moving started, restored if the move is cancelled. */
+    private var favoritesBeforeMove: List<String>? = null
 
     private val _state = MutableStateFlow(
-        UiState(playlistUrl = repo.savedUrl.orEmpty(), showSettings = repo.savedUrl.isNullOrBlank()),
+        UiState(
+            playlistUrl = repo.savedUrl.orEmpty(),
+            guideUrl = repo.guideUrl.orEmpty(),
+            favorites = repo.favorites,
+            showSettings = repo.savedUrl.isNullOrBlank(),
+        ),
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
 
@@ -51,14 +108,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onUrlChange(url: String) = _state.update { it.copy(playlistUrl = url) }
 
+    fun onGuideUrlChange(url: String) = _state.update { it.copy(guideUrl = url) }
+
     fun loadPlaylist(url: String = _state.value.playlistUrl) {
         val trimmed = url.trim()
         if (trimmed.isEmpty()) return
+        val guideChanged = _state.value.guideUrl.trim() != repo.guideUrl.orEmpty()
+        repo.guideUrl = _state.value.guideUrl.trim().ifEmpty { null }
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             runCatching { repo.load(trimmed) }
-                .onSuccess { channels ->
+                .onSuccess { playlist ->
+                    val channels = playlist.channels
                     repo.savedUrl = trimmed
+                    playlistGuideUrl = playlist.guideUrl
                     val last = channels.indexOfFirst { it.stableKey == repo.lastChannelKey }.coerceAtLeast(0)
                     _state.update {
                         it.copy(
@@ -66,6 +129,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             channels = channels,
                             groups = channels.mapNotNull { c -> c.group }.distinct(),
                             selectedGroup = null,
+                            favoritesSelected = false,
+                            movingFavorite = null,
                             focusIndex = last,
                             error = if (channels.isEmpty()) "播放列表中没有频道" else null,
                             loadedAt = System.currentTimeMillis(),
@@ -73,6 +138,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             showSettings = it.showSettings && channels.isEmpty(),
                         )
                     }
+                    refreshGuide(force = guideChanged)
                 }
                 .onFailure { e ->
                     _state.update {
@@ -87,25 +153,116 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun openSettings() = _state.update { it.copy(showSettings = true, error = null) }
+    /**
+     * Loads the guide for the current channels (from cache when it is recent enough), then
+     * keeps it fresh: it is fetched again every [GuideRepository.MAX_AGE_MS] while the app runs.
+     */
+    fun refreshGuide(force: Boolean = false) {
+        val channels = _state.value.channels
+        val own = repo.guideUrl
+        val url = own ?: playlistGuideUrl
+        guideJob?.cancel()
+        if (url == null || channels.isEmpty()) {
+            _state.update {
+                it.copy(
+                    programmes = emptyMap(),
+                    guideStatus = if (channels.isEmpty()) null else GuideStatus(error = "播放列表没有提供节目单地址，可以在上面填写"),
+                )
+            }
+            return
+        }
+        _state.update {
+            it.copy(guideStatus = (it.guideStatus ?: GuideStatus()).copy(loading = true, error = null, fromPlaylist = own == null))
+        }
+        guideJob = viewModelScope.launch {
+            var forceNext = force
+            while (true) {
+                runCatching { guideRepo.load(url, channels, forceNext) }
+                    .onSuccess { data ->
+                        _state.update {
+                            it.copy(
+                                programmes = data.programmes,
+                                guideStatus = GuideStatus(
+                                    downloadedAt = data.downloadedAt,
+                                    matched = channels.count { c -> c.stableKey in data.programmes },
+                                    total = channels.size,
+                                    fromPlaylist = own == null,
+                                ),
+                            )
+                        }
+                    }
+                    .onFailure { e ->
+                        _state.update {
+                            it.copy(guideStatus = GuideStatus(error = "节目单下载失败：" + loadErrorMessage(e), fromPlaylist = own == null))
+                        }
+                    }
+                forceNext = true
+                delay(GuideRepository.MAX_AGE_MS)
+            }
+        }
+    }
+
+    fun openSettings() = _state.update { it.copy(showSettings = true, showGuide = false, error = null) }
 
     /** Leaves the source page; stays on it while there are no channels to go back to. */
     fun closeSettings(): Boolean {
         if (_state.value.channels.isEmpty()) return false
-        _state.update { it.copy(showSettings = false, playlistUrl = repo.savedUrl ?: it.playlistUrl, error = null) }
+        _state.update {
+            it.copy(
+                showSettings = false,
+                playlistUrl = repo.savedUrl ?: it.playlistUrl,
+                guideUrl = repo.guideUrl.orEmpty(),
+                error = null,
+            )
+        }
         return true
     }
 
+    fun openGuide() = _state.update { it.copy(showGuide = true, playingIndex = null) }
+
+    fun closeGuide() = _state.update { it.copy(showGuide = false) }
+
     fun selectGroup(group: String?) = _state.update { s ->
-        val next = s.copy(selectedGroup = group)
+        val next = s.copy(selectedGroup = group, favoritesSelected = false, movingFavorite = null)
         next.copy(focusIndex = next.visibleIndices.firstOrNull() ?: 0)
+    }
+
+    fun selectFavorites() = _state.update { s ->
+        val next = s.copy(favoritesSelected = true, movingFavorite = null)
+        next.copy(focusIndex = next.visibleIndices.firstOrNull() ?: 0)
+    }
+
+    fun toggleFavorite(key: String) {
+        val list = FavoriteList.toggle(_state.value.favorites, key)
+        repo.favorites = list
+        _state.update { it.copy(favorites = list) }
+    }
+
+    fun startMovingFavorite(key: String) {
+        if (key !in _state.value.favorites) return
+        favoritesBeforeMove = _state.value.favorites
+        _state.update { it.copy(movingFavorite = key) }
+    }
+
+    /** Moves the favourite being moved one place up (-1) or down (+1). */
+    fun moveFavorite(delta: Int) {
+        val key = _state.value.movingFavorite ?: return
+        _state.update { it.copy(favorites = FavoriteList.move(it.favorites, key, delta)) }
+    }
+
+    /** Ends moving: keeps the new order, or with [cancel] puts the old one back. */
+    fun finishMovingFavorite(cancel: Boolean = false) {
+        val before = favoritesBeforeMove
+        favoritesBeforeMove = null
+        _state.update { it.copy(movingFavorite = null, favorites = if (cancel && before != null) before else it.favorites) }
+        repo.favorites = _state.value.favorites
     }
 
     fun play(index: Int) {
         val channels = _state.value.channels
         if (index !in channels.indices) return
         repo.lastChannelKey = channels[index].stableKey
-        _state.update { it.copy(playingIndex = index, focusIndex = index) }
+        _state.update { it.copy(playingIndex = index, focusIndex = index, showGuide = false) }
     }
 
     /** Moves to the next (+1) or previous (-1) channel in the current group, wrapping around. */

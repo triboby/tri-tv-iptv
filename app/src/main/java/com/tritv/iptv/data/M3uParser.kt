@@ -14,6 +14,20 @@ object M3uParser {
 
     private val attrRegex = Regex("""([\w-]+)="([^"]*)"""")
 
+    /** The guide address in the `#EXTM3U` header (`x-tvg-url` or `url-tvg`); the first if it lists several. */
+    fun guideUrl(text: String): String? {
+        val header = text.lineSequence()
+            .map { it.trim().removePrefix("\uFEFF") }
+            .firstOrNull { it.isNotEmpty() }
+            ?.takeIf { it.startsWith("#EXTM3U", ignoreCase = true) }
+            ?: return null
+        val attrs = attrRegex.findAll(header).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
+        return (attrs["x-tvg-url"] ?: attrs["url-tvg"])
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.firstOrNull { it.isNotEmpty() }
+    }
+
     fun parse(text: String): List<PlaylistEntry> {
         val channels = mutableListOf<PlaylistEntry>()
         var pending: Pending? = null
@@ -49,6 +63,7 @@ object M3uParser {
                         group = p.group,
                         logo = p.logo,
                         tvgId = p.tvgId,
+                        tvgName = p.tvgName,
                         userAgent = p.userAgent,
                         referrer = p.referrer,
                     )
@@ -71,6 +86,7 @@ object M3uParser {
             group = attrs["group-title"]?.ifEmpty { null },
             logo = attrs["tvg-logo"]?.ifEmpty { null },
             tvgId = attrs["tvg-id"]?.ifEmpty { null },
+            tvgName = attrs["tvg-name"]?.ifEmpty { null },
             userAgent = attrs["user-agent"] ?: attrs["http-user-agent"],
             referrer = attrs["http-referrer"] ?: attrs["referer"],
         )
@@ -92,6 +108,7 @@ object M3uParser {
         var group: String? = null,
         var logo: String? = null,
         var tvgId: String? = null,
+        var tvgName: String? = null,
         var userAgent: String? = null,
         var referrer: String? = null,
     )

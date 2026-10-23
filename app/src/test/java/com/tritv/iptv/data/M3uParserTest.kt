@@ -104,4 +104,17 @@ class M3uParserTest {
 
         assertNull(channels[5].userAgent)
     }
+
+    @Test
+    fun readsGuideUrlFromHeader() {
+        assertEquals("http://epg/a.xml", M3uParser.guideUrl("#EXTM3U x-tvg-url=\"http://epg/a.xml, http://epg/b.xml\"\n#EXTINF:-1,A\nhttp://a"))
+        assertEquals("http://epg/c.xml.gz", M3uParser.guideUrl("\uFEFF#EXTM3U url-tvg=\"http://epg/c.xml.gz\""))
+        assertNull(M3uParser.guideUrl("#EXTM3U\n#EXTINF:-1 x-tvg-url=\"http://no\",A\nhttp://a"))
+    }
+
+    @Test
+    fun keepsTvgName() {
+        val ch = M3uParser.parse("#EXTINF:-1 tvg-name=\"CCTV5\",CCTV-5 体育\nhttp://a").single()
+        assertEquals("CCTV5", ch.tvgName)
+    }
 }
