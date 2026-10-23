@@ -27,7 +27,7 @@ class PlaylistRepository(context: Context) {
             conn.instanceFollowRedirects = true
             conn.setRequestProperty("User-Agent", "TriTV/1.0")
             val code = conn.responseCode
-            if (code !in 200..299) error("HTTP $code")
+            if (code !in 200..299) throw HttpStatusException(code)
             val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             ChannelMerger.merge(M3uParser.parse(text))
         } finally {

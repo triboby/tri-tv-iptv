@@ -80,9 +80,13 @@ fun ChannelListScreen(
                 .padding(horizontal = ScreenMargin, vertical = 20.dp),
         ) {
             if (state.groups.isNotEmpty()) {
+                // Scrolls when there are more groups than fit; the bottom padding keeps the last chip clear of the edge.
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.width(184.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp),
+                    modifier = Modifier
+                        .width(184.dp)
+                        .fillMaxHeight(),
                 ) {
                     item(key = "__all__") {
                         GroupChip(null, state.channels.size, state.selectedGroup == null) { onSelectGroup(null) }
@@ -148,6 +152,7 @@ private fun SubNav(state: UiState, onOpenSettings: () -> Unit) {
             )
         }
         UtilityButton(onClick = onOpenSettings) {
+            RssIcon()
             Text("直播源", style = TriTvType.Caption)
         }
     }

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tritv.iptv.data.Channel
 import com.tritv.iptv.data.PlaylistRepository
+import com.tritv.iptv.data.loadErrorMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -77,7 +78,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _state.update {
                         it.copy(
                             loading = false,
-                            error = "加载失败：${e.message ?: e.javaClass.simpleName}",
+                            error = loadErrorMessage(e),
                             // Nothing to browse, so show the source page where the address can be fixed.
                             showSettings = it.showSettings || it.channels.isEmpty(),
                         )

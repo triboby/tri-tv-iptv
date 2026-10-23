@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,8 +30,15 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -49,6 +57,7 @@ fun SettingsScreen(
 ) {
     val canGoBack = state.channels.isNotEmpty()
     val fieldFocus = remember { FocusRequester() }
+    val buttonFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 
     Column(
@@ -96,6 +105,7 @@ fun SettingsScreen(
                             value = state.playlistUrl,
                             onValueChange = onUrlChange,
                             onDone = onLoad,
+                            next = buttonFocus,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(fieldFocus),
@@ -103,13 +113,10 @@ fun SettingsScreen(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         PrimaryPill(
-                            text = when {
-                                state.loading -> "导入中…"
-                                canGoBack -> "导入并返回"
-                                else -> "导入"
-                            },
+                            text = if (state.loading) "导入中…" else "导入并返回",
                             onClick = onLoad,
                             enabled = !state.loading && state.playlistUrl.isNotBlank(),
+                            modifier = Modifier.focusRequester(buttonFocus),
                         )
                         if (canGoBack) SecondaryPill("取消", onClick = onCancel)
                         Spacer(Modifier.weight(1f))
@@ -156,34 +163,88 @@ private fun LastImportCard(state: UiState, loadedAt: Long) {
     }
 }
 
+/**
+ * Address field for a remote: focusing it does not open the keyboard. OK starts editing and shows the
+ * keyboard; Down (or Right when not editing) hides it and moves to [next]; the keyboard's Go imports.
+ */
 @Composable
 private fun UrlField(
     value: String,
     onValueChange: (String) -> Unit,
     onDone: () -> Unit,
+    next: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(editing) { if (editing) keyboard?.show() else keyboard?.hide() }
+
+    fun leave() {
+        editing = false
+        keyboard?.hide()
+        runCatching { next.requestFocus() }
+    }
+
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
+        readOnly = !editing,
         textStyle = TriTvType.Body.copy(color = TriTvColors.Text),
-        cursorBrush = SolidColor(TriTvColors.Focus),
+        cursorBrush = SolidColor(if (editing) TriTvColors.Focus else Color.Transparent),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-        keyboardActions = KeyboardActions(onGo = { onDone() }),
+        keyboardActions = KeyboardActions(onGo = {
+            editing = false
+            onDone()
+        }),
         modifier = modifier
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (!it.isFocused) editing = false
+            }
+            .onPreviewKeyEvent { event ->
+                val down = event.type == KeyEventType.KeyDown
+                when (event.key) {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when {
+                        editing -> false
+                        // Consume both halves of the press; start editing on release.
+                        !down -> {
+                            editing = true
+                            true
+                        }
+                        else -> true
+                    }
+                    Key.DirectionDown -> {
+                        if (down) leave()
+                        true
+                    }
+                    Key.DirectionRight -> if (editing) {
+                        false
+                    } else {
+                        if (down) leave()
+                        true
+                    }
+                    else -> false
+                }
+            }
             .height(44.dp)
             .background(TriTvColors.Ink, Radius.Pill)
             .border(if (focused) 2.dp else 1.dp, if (focused) TriTvColors.Focus else TriTvColors.Hairline, Radius.Pill)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(start = 16.dp, end = 20.dp),
         decorationBox = { inner ->
-            Box(contentAlignment = Alignment.CenterStart) {
-                if (value.isEmpty()) {
-                    Text("http://…/playlist.m3u", style = TriTvType.Body, color = TriTvColors.TextDim, maxLines = 1)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxHeight(),
+            ) {
+                LinkIcon(color = TriTvColors.TextDim)
+                Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.weight(1f)) {
+                    if (value.isEmpty()) {
+                        Text("http://…/playlist.m3u", style = TriTvType.Body, color = TriTvColors.TextDim, maxLines = 1)
+                    }
+                    inner()
                 }
-                inner()
             }
         },
     )

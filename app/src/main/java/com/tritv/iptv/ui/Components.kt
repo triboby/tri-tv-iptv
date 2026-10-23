@@ -27,6 +27,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.PathParser
@@ -41,6 +44,7 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Glow
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.SelectableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
@@ -156,7 +160,10 @@ fun TopBar(trailing: @Composable RowScope.() -> Unit = {}) {
 
 private val noGlow = Glow.None
 
-/** Blue pill for the one main action on a screen. Focus adds a white ring; press shrinks it. */
+/**
+ * Blue pill for the one main action on a screen. It is already blue, so focus inverts it to white
+ * with blue text (a blue fill would be indistinguishable); press shrinks it.
+ */
 @Composable
 fun PrimaryPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Button(
@@ -168,15 +175,12 @@ fun PrimaryPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
         colors = ButtonDefaults.colors(
             containerColor = TriTvColors.Action,
             contentColor = TriTvColors.Text,
-            focusedContainerColor = TriTvColors.Focus,
-            focusedContentColor = TriTvColors.Text,
-            pressedContainerColor = TriTvColors.Focus,
-            pressedContentColor = TriTvColors.Text,
+            focusedContainerColor = TriTvColors.Text,
+            focusedContentColor = TriTvColors.Action,
+            pressedContainerColor = TriTvColors.Text,
+            pressedContentColor = TriTvColors.Action,
             disabledContainerColor = TriTvColors.TileRaised,
             disabledContentColor = TriTvColors.TextDim,
-        ),
-        border = ButtonDefaults.border(
-            focusedBorder = Border(BorderStroke(2.dp, TriTvColors.Text), shape = Radius.Pill),
         ),
         scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 0.95f),
         glow = ButtonDefaults.glow(glow = noGlow, focusedGlow = noGlow, pressedGlow = noGlow),
@@ -303,6 +307,33 @@ fun FocusRow(
         )
     }
 }
+
+private fun iconPath(d: String) = PathParser().parsePathString(d).toPath()
+
+private val linkPaths = listOf(
+    iconPath("M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"),
+    iconPath("M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"),
+)
+private val rssPaths = listOf(iconPath("M4 11a9 9 0 0 1 9 9"), iconPath("M4 4a16 16 0 0 1 16 16"))
+
+/** A 24-unit line icon drawn with 2-unit round strokes, scaled to [size]. */
+@Composable
+private fun StrokeIcon(paths: List<androidx.compose.ui.graphics.Path>, size: Dp, color: Color, dot: Offset? = null) {
+    Canvas(Modifier.size(size)) {
+        val k = this.size.minDimension / 24f
+        scale(k, pivot = Offset.Zero) {
+            val stroke = Stroke(width = 2f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            paths.forEach { drawPath(it, color, style = stroke) }
+            dot?.let { drawCircle(color, radius = 1.5f, center = it) }
+        }
+    }
+}
+
+@Composable
+fun LinkIcon(size: Dp = 16.dp, color: Color = LocalContentColor.current) = StrokeIcon(linkPaths, size, color)
+
+@Composable
+fun RssIcon(size: Dp = 16.dp, color: Color = LocalContentColor.current) = StrokeIcon(rssPaths, size, color, Offset(5f, 19f))
 
 /** Small key-cap label for remote hints ("OK", "返回"). */
 @Composable
