@@ -1,0 +1,61 @@
+package com.tritv.iptv.data
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class LineRankerTest {
+
+    private val urls = listOf("a", "b", "c", "d")
+
+    @Test
+    fun fastestWorkingFirstThenUncheckedThenFailed() {
+        val stats = mapOf(
+            "a" to LineStat(failAt = 5),
+            "b" to LineStat(latencyMs = 900, okAt = 5),
+            "d" to LineStat(latencyMs = 120, okAt = 5),
+        )
+        assertEquals(listOf(3, 1, 2, 0), LineRanker.order(urls, stats, picked = null))
+    }
+
+    @Test
+    fun recoveredLineCountsAsWorking() {
+        val stats = mapOf("a" to LineStat(latencyMs = 50, okAt = 9, failAt = 5), "b" to LineStat(latencyMs = 80, okAt = 5))
+        assertEquals(listOf(0, 1, 2, 3), LineRanker.order(urls, stats, picked = null))
+    }
+
+    @Test
+    fun viewersPickComesFirstUntilItFails() {
+        val stats = mapOf("a" to LineStat(latencyMs = 50, okAt = 5), "c" to LineStat(latencyMs = 400, okAt = 5))
+        assertEquals(listOf(2, 0, 1, 3), LineRanker.order(urls, stats, picked = "c"))
+        val failed = stats + ("c" to LineStat(latencyMs = 400, okAt = 5, failAt = 6))
+        assertEquals(listOf(0, 1, 3, 2), LineRanker.order(urls, failed, picked = "c"))
+    }
+
+    @Test
+    fun playbackSuccessWithoutLatencyRanksAfterMeasuredLines() {
+        val stats = mapOf("a" to LineStat(okAt = 5), "b" to LineStat(latencyMs = 300, okAt = 5))
+        assertEquals(listOf(1, 0, 2, 3), LineRanker.order(urls, stats, picked = null))
+    }
+
+    @Test
+    fun latencyIsSmoothed() {
+        val s = LineStat().succeeded(1, 100).succeeded(2, 300)
+        assertEquals(200, s.latencyMs)
+        assertEquals(200, s.failed(3).succeeded(4).latencyMs)
+    }
+
+    @Test
+    fun encodesRoundTrip() {
+        val s = LineStat(latencyMs = 85, okAt = 10, failAt = 3)
+        assertEquals(s, LineRanker.decode(LineRanker.encode(s)))
+        assertEquals(LineStat(okAt = 0, failAt = 7), LineRanker.decode(LineRanker.encode(LineStat(failAt = 7))))
+        assertNull(LineRanker.decode("junk"))
+    }
+
+    @Test
+    fun onlyHttpIsProbed() {
+        assertEquals(true, LineRanker.probeable("HTTP://a/1.m3u8"))
+        assertEquals(false, LineRanker.probeable("rtsp://a/1"))
+    }
+}

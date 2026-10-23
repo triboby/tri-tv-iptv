@@ -25,8 +25,13 @@ class MainActivity : ComponentActivity() {
                 val playing = state.playingIndex
                 if (playing != null && playing in state.channels.indices) {
                     val channel = state.channels[playing]
+                    val lineStats by viewModel.lineStats.collectAsStateWithLifecycle()
                     PlayerScreen(
                         channel = channel,
+                        lines = state.playingLines.ifEmpty { channel.sources },
+                        lineStats = lineStats,
+                        onLineResult = viewModel::reportLine,
+                        onLinePicked = viewModel::pickLine,
                         channelNumber = playing + 1,
                         programmes = state.programmesOf(channel),
                         isFavorite = state.isFavorite(channel),

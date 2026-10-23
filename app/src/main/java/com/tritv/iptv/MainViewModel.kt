@@ -5,6 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tritv.iptv.data.Channel
 import com.tritv.iptv.data.FavoriteList
+import com.tritv.iptv.data.LineRepository
+import com.tritv.iptv.data.LineStat
+import com.tritv.iptv.data.PlaylistEntry
 import com.tritv.iptv.data.PlaylistRepository
 import com.tritv.iptv.data.guideErrorMessage
 import com.tritv.iptv.data.loadErrorMessage
@@ -53,6 +56,8 @@ data class UiState(
     val error: String? = null,
     /** Index into [channels] of the channel being played, or null when browsing. */
     val playingIndex: Int? = null,
+    /** The playing channel's lines in the order to try them, fixed when it started. */
+    val playingLines: List<PlaylistEntry> = emptyList(),
     /** Index into [channels] the list should focus, e.g. after leaving the player. */
     val focusIndex: Int = 0,
     /** Whether the playlist source page is shown instead of the channel list. */
@@ -88,10 +93,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = PlaylistRepository(app)
     private val guideRepo = GuideRepository(app)
+    private val lines = LineRepository(app)
+
+    /** Probe results and playback outcomes per stream URL. */
+    val lineStats: StateFlow<Map<String, LineStat>> = lines.stats
 
     /** Guide address from the last loaded playlist's header. */
     private var playlistGuideUrl: String? = null
     private var guideJob: Job? = null
+    private var sweepJob: Job? = null
 
     /** Favourites as they were when moving started, restored if the move is cancelled. */
     private var favoritesBeforeMove: List<String>? = null
@@ -143,6 +153,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }
                     refreshGuide(force = guideChanged)
+                    lines.prune(channels)
+                    startLineSweep()
                 }
                 .onFailure { e ->
                     _state.update {
@@ -207,6 +219,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Probes the lines of every channel that has backups in the background, and again every
+     * [LineRepository.SWEEP_MAX_AGE_MS], so opening a channel tries its fastest working line
+     * first. The last channel and the favourites go first.
+     */
+    private fun startLineSweep() {
+        sweepJob?.cancel()
+        sweepJob = viewModelScope.launch {
+            while (true) {
+                val s = _state.value
+                val first = (listOfNotNull(repo.lastChannelKey) + s.favorites).toSet()
+                val (likely, rest) = s.channels.partition { it.stableKey in first }
+                lines.sweep(likely + rest, LineRepository.SWEEP_MAX_AGE_MS)
+                delay(LineRepository.SWEEP_MAX_AGE_MS)
+            }
+        }
+    }
+
+    /** Records how playing [entry] of the playing channel went. */
+    fun reportLine(entry: PlaylistEntry, ok: Boolean) = lines.report(entry, ok)
+
+    /** Remembers [entry] as the line the viewer chose for the playing channel. */
+    fun pickLine(entry: PlaylistEntry) {
+        val s = _state.value
+        val channel = s.playingIndex?.let { s.channels.getOrNull(it) } ?: return
+        lines.pick(channel, entry)
+    }
+
     fun openSettings() = _state.update { it.copy(showSettings = true, showGuide = false, error = null) }
 
     /** Leaves the source page; stays on it while there are no channels to go back to. */
@@ -266,8 +306,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun play(index: Int) {
         val channels = _state.value.channels
         if (index !in channels.indices) return
-        repo.lastChannelKey = channels[index].stableKey
-        _state.update { it.copy(playingIndex = index, focusIndex = index, showGuide = false) }
+        val channel = channels[index]
+        repo.lastChannelKey = channel.stableKey
+        _state.update {
+            it.copy(playingIndex = index, playingLines = lines.ordered(channel), focusIndex = index, showGuide = false)
+        }
+        // Fresh numbers let the player skip a line that turns out dead before its own timeout.
+        if (channel.sources.size > 1) {
+            viewModelScope.launch { lines.probeChannel(channel, LineRepository.PLAY_MAX_AGE_MS) }
+        }
     }
 
     /** Moves to the next (+1) or previous (-1) channel in the current group, wrapping around. */
