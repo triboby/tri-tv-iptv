@@ -52,10 +52,13 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.tritv.iptv.data.Channel
+import com.tritv.iptv.data.LineStat
+import com.tritv.iptv.data.PlaylistEntry
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
 import com.tritv.iptv.ui.ChannelJumpPill
@@ -84,6 +87,13 @@ private const val DEFAULT_USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
 @Composable
 fun PlayerScreen(
     channel: Channel,
+    /** [channel]'s lines in the order to try them. */
+    lines: List<PlaylistEntry>,
+    lineStats: Map<String, LineStat>,
+    /** Called when a line starts playing (true) or fails (false). */
+    onLineResult: (PlaylistEntry, Boolean) -> Unit,
+    /** Called when a line the viewer switched to starts playing. */
+    onLinePicked: (PlaylistEntry) -> Unit,
     channelNumber: Int,
     programmes: List<Programme>,
     isFavorite: Boolean,
@@ -105,7 +115,7 @@ fun PlayerScreen(
         onDispose { player.release() }
     }
 
-    val attempts = remember(channel) { playbackAttempts(channel.sources) }
+    val attempts = remember(channel, lines) { playbackAttempts(lines) }
     var attemptIndex by remember(channel) { mutableIntStateOf(0) }
     var error by remember(channel) { mutableStateOf<String?>(null) }
     // First attempt that showed video without decodable audio, kept as a last resort.
@@ -113,6 +123,10 @@ fun PlayerScreen(
     // Set when the viewer picked the line, or every other line failed: stay on it even if silent.
     var stayOnLine by remember(channel) { mutableStateOf(false) }
     var noAudio by remember(channel) { mutableStateOf(false) }
+    // Whether the current attempt has played yet; reset when it changes.
+    var ready by remember(channel) { mutableStateOf(false) }
+    // Set when the viewer switched lines, so the line is remembered once it plays.
+    var pickedByViewer by remember(channel) { mutableStateOf(false) }
     var buffering by remember { mutableStateOf(true) }
     var showInfo by remember { mutableStateOf(true) }
     // Brief "已加入收藏 / 已取消收藏" note after the viewer toggles the favourite.
@@ -124,19 +138,29 @@ fun PlayerScreen(
     var pendingZap by remember { mutableIntStateOf(0) }
     val numberEntry = rememberNumberEntry(onPlayNumber)
     val attempt = attempts[attemptIndex]
+    val attemptStartedAt = remember(channel, attemptIndex) { System.currentTimeMillis() }
 
     // Keyed on channel so the listener sees this channel's attempt state.
-    DisposableEffect(player, channel) {
+    DisposableEffect(player, channel, lines) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
-                if (state == Player.STATE_READY) error = null
+                if (state == Player.STATE_READY) {
+                    error = null
+                    if (!ready) {
+                        ready = true
+                        val line = lines[attempts[attemptIndex].sourceIndex]
+                        onLineResult(line, true)
+                        if (pickedByViewer) onLinePicked(line)
+                    }
+                }
             }
 
             override fun onPlayerError(e: PlaybackException) {
+                onLineResult(lines[attempts[attemptIndex].sourceIndex], false)
                 val next = nextAttempt(attemptIndex, attempts.size, silentLine)
                 if (next == null) {
-                    error = "所有线路都无法播放：${e.errorCodeName}"
+                    error = "所有线路都无法播放：" + playbackErrorReason(e.errorCode)
                 } else {
                     stayOnLine = next == silentLine
                     attemptIndex = next
@@ -156,12 +180,35 @@ fun PlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
+    // Probes of this channel's lines start with it and answer well before the player gives up
+    // on a dead line, so act on them: leave a line found dead, or one still loading after a
+    // few seconds when another line is known to work.
+    val lineUrls = remember(lines) { lines.map { it.url } }
+    val lineStat = lineStats[lineUrls[attempt.sourceIndex]]
+    val channelStats = lineUrls.map { lineStats[it] }
+    LaunchedEffect(attemptIndex, channelStats) {
+        fun check(): Boolean {
+            if (ready || stayOnLine) return true
+            val next = probeSwitch(attempts, lineUrls, lineStats, attemptIndex, attemptStartedAt, System.currentTimeMillis())
+                ?: return false
+            attemptIndex = next
+            return true
+        }
+        if (check()) return@LaunchedEffect
+        val wait = attemptStartedAt + SLOW_START_MS - System.currentTimeMillis()
+        if (wait > 0) {
+            delay(wait)
+            check()
+        }
+    }
+
     LaunchedEffect(channel, attempt) {
-        val source = channel.sources[attempt.sourceIndex]
+        ready = false
+        val source = lines[attempt.sourceIndex]
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(source.userAgent ?: DEFAULT_USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(10_000)
+            .setConnectTimeoutMs(6_000)
             .setReadTimeoutMs(10_000)
         source.referrer?.let { httpFactory.setDefaultRequestProperties(mapOf("Referer" to it)) }
 
@@ -169,7 +216,14 @@ fun PlayerScreen(
             .setUri(source.url)
             .apply { attempt.mimeType?.let { setMimeType(it) } }
             .build()
-        player.setMediaSource(DefaultMediaSourceFactory(httpFactory).createMediaSource(item))
+        // Until a line has played, give up on it after one retry so the next line gets its turn;
+        // once playing, ride out short network hiccups instead of switching lines.
+        val retries = object : DefaultLoadErrorHandlingPolicy() {
+            override fun getMinimumLoadableRetryCount(dataType: Int) = if (ready) 3 else 1
+        }
+        player.setMediaSource(
+            DefaultMediaSourceFactory(httpFactory).setLoadErrorHandlingPolicy(retries).createMediaSource(item),
+        )
         player.prepare()
     }
 
@@ -200,11 +254,12 @@ fun PlayerScreen(
 
     /** Jumps to the first attempt of the previous (-1) or next (+1) source line. */
     fun switchSource(delta: Int) {
-        val count = channel.sources.size
+        val count = lines.size
         if (count < 2) return
         val target = Math.floorMod(attempt.sourceIndex + delta, count)
         error = null
         stayOnLine = true
+        pickedByViewer = true
         attemptIndex = attempts.indexOfFirst { it.sourceIndex == target }
     }
 
@@ -363,16 +418,21 @@ fun PlayerScreen(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             val err = error
                             if (err != null) {
-                                Text(err, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 1)
+                                Text(err, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             } else {
                                 channel.group?.let { GroupCaption(it, TriTvType.Caption, TriTvColors.TextMuted) }
-                                if (channel.sources.size > 1) {
+                                if (lines.size > 1) {
                                     if (channel.group != null) Dot()
                                     Text(
-                                        "线路 ${attempt.sourceIndex + 1}/${channel.sources.size}",
+                                        "线路 ${attempt.sourceIndex + 1}/${lines.size}",
                                         style = TriTvType.Caption,
                                         color = TriTvColors.TextMuted,
                                     )
+                                    // How fast this line answered its last probes.
+                                    lineStat?.takeIf { !it.failing }?.latencyMs?.let { ms ->
+                                        Dot()
+                                        Text("$ms ms", style = TriTvType.Caption.tabular(), color = TriTvColors.TextMuted)
+                                    }
                                 }
                                 if (buffering) {
                                     Dot()

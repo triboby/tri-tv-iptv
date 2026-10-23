@@ -1,6 +1,8 @@
 package com.tritv.iptv.player
 
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import com.tritv.iptv.data.LineStat
 import com.tritv.iptv.data.PlaylistEntry
 
 /** One way of trying to play a channel: a source line and the MIME type to force (null lets ExoPlayer sniff). */
@@ -38,4 +40,59 @@ internal fun nextAttempt(current: Int, count: Int, silentLine: Int?): Int? = whe
     current + 1 < count -> current + 1
     silentLine != null && silentLine != current -> silentLine
     else -> null
+}
+
+/** How long a line may load before another line that probes have shown working takes over. */
+internal const val SLOW_START_MS = 3_000L
+
+/** A probe or playback success at most this old counts as the line working now. */
+private const val FRESH_MS = 2 * 60_000L
+
+/**
+ * While attempt [current] (started at [startedAt]) is still loading, the attempt to jump to
+ * because of what probes found since, or null to keep waiting: when its line has been found
+ * dead, the fastest line known to work, else the next line not known dead; when it has loaded
+ * for [SLOW_START_MS] without being known to work, the fastest line that is.
+ */
+internal fun probeSwitch(
+    attempts: List<Attempt>,
+    lineUrls: List<String>,
+    stats: Map<String, LineStat>,
+    current: Int,
+    startedAt: Long,
+    now: Long,
+): Int? {
+    val line = attempts[current].sourceIndex
+    fun statOf(i: Int) = stats[lineUrls[attempts[i].sourceIndex]]
+    fun working(s: LineStat?) = s != null && !s.failing && s.okAt > startedAt - FRESH_MS
+    val cur = statOf(current)
+    val dead = cur != null && cur.failing && cur.failAt > startedAt
+    if (!dead && (now - startedAt < SLOW_START_MS || working(cur))) return null
+    val others = attempts.indices.filter { attempts[it].sourceIndex != line }
+    others.filter { working(statOf(it)) }
+        .minByOrNull { statOf(it)?.latencyMs ?: Int.MAX_VALUE }
+        ?.let { return it }
+    if (!dead) return null
+    return others.firstOrNull { it > current && statOf(it)?.failing != true }
+}
+
+/** A short Chinese reason for the error that ended the last line, for the player's info bar. */
+internal fun playbackErrorReason(code: Int): String = when (code) {
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "连不上服务器或超时"
+    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "服务器拒绝或没有这个节目"
+    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "服务器上没有这个节目"
+    PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED,
+    PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> "服务器不允许访问"
+    PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+    PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+    PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED -> "返回的不是能播放的视频"
+    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+    PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> "电视解不了这个视频格式"
+    PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "直播流中断"
+    else -> "播放出错（$code）"
 }
