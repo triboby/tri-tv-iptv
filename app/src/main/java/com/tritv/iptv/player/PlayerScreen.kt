@@ -55,6 +55,7 @@ import com.tritv.iptv.data.Channel
 import com.tritv.iptv.ui.EyebrowStyle
 import com.tritv.iptv.ui.TriTvColors
 import com.tritv.iptv.ui.glassPanel
+import com.tritv.iptv.ui.groupLabel
 import kotlinx.coroutines.delay
 
 private const val DEFAULT_USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
@@ -212,7 +213,7 @@ fun PlayerScreen(
                         null
                     }
                     val status = error ?: listOfNotNull(
-                        channel.group,
+                        channel.group?.let(::groupLabel),
                         line,
                         "缓冲中…".takeIf { buffering },
                     ).joinToString("  ·  ")

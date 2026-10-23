@@ -125,7 +125,7 @@ fun ChannelListScreen(
                         }
                         items(state.groups, key = { it }) { group ->
                             GroupItem(
-                                name = group,
+                                name = groupLabel(group),
                                 count = state.channels.count { it.group == group },
                                 selected = state.selectedGroup == group,
                             ) { onSelectGroup(group) }
@@ -182,7 +182,7 @@ private fun FocusedTitle(state: UiState, focusedIndex: Int) {
             )
             val details = listOfNotNull(
                 "%03d".format(index + 1),
-                c.group,
+                c.group?.let(::groupLabel),
                 "${c.sources.size} 条线路".takeIf { c.sources.size > 1 },
             ).joinToString("   ·   ")
             Text(details, style = EyebrowStyle)
@@ -209,7 +209,7 @@ private fun ChannelItem(state: UiState, index: Int, onClick: () -> Unit, modifie
         },
         trailingContent = {
             val details = listOfNotNull(
-                channel.group.takeIf { state.selectedGroup == null },
+                channel.group?.let(::groupLabel).takeIf { state.selectedGroup == null },
                 "${channel.sources.size} 线".takeIf { channel.sources.size > 1 },
             ).joinToString("  ·  ")
             if (details.isNotEmpty()) {
