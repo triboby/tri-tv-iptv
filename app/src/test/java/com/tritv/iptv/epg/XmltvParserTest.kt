@@ -70,6 +70,21 @@ class XmltvParserTest {
     }
 
     @Test
+    fun endsOverlappingProgrammesWhenTheNextStarts() {
+        val guide = parse(
+            """
+            <tv>
+              <programme start="20261023211000 +0800" stop="20261023221700 +0800" channel="CCTV3"><title>综艺</title></programme>
+              <programme start="20261023212300 +0800" stop="20261023230000 +0800" channel="CCTV3"><title>电影</title></programme>
+            </tv>
+            """.trimIndent(),
+        )
+        val (first, second) = guide.getValue("CCTV3")
+        assertEquals(XmltvParser.parseTime("20261023212300 +0800"), first.stop)
+        assertEquals(XmltvParser.parseTime("20261023230000 +0800"), second.stop)
+    }
+
+    @Test
     fun skipsProgrammesWithoutTitleOrValidTimes() {
         val guide = parse(
             """

@@ -51,6 +51,7 @@ import androidx.tv.material3.Text
 import com.tritv.iptv.UiState
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -81,11 +82,33 @@ fun ChannelListScreen(
 
     BackHandler(enabled = moving != null) { onFinishMove(true) }
 
+    // Whether focus is in the group column, where resting on a group shows it without leaving the column.
+    var groupsFocused by remember { mutableStateOf(false) }
+    // Bumped by OK on a group, to move focus into the list even though it is in the group column.
+    var focusListTick by remember { mutableIntStateOf(0) }
+    val handledFocusListTick = remember { intArrayOf(0) }
+    // Group chip with focus, shown once focus rests on it for GROUP_FOCUS_DELAY_MS.
+    var focusedGroup by remember { mutableStateOf<GroupChoice?>(null) }
+    val selectedGroupRequester = remember { FocusRequester() }
+
+    LaunchedEffect(focusedGroup) {
+        val choice = focusedGroup ?: return@LaunchedEffect
+        delay(GROUP_FOCUS_DELAY_MS)
+        if (choice.favorites) onSelectFavorites() else onSelectGroup(choice.group)
+    }
+
     // Put focus back on the last played channel when the list (re)appears.
-    LaunchedEffect(state.channels, state.focusIndex, state.selectedGroup, state.favoritesSelected) {
+    LaunchedEffect(state.channels, state.focusIndex, state.selectedGroup, state.favoritesSelected, focusListTick) {
+        // Marked handled only once acted on, as a group's new state can restart this before then.
+        val askedForList = focusListTick != handledFocusListTick[0]
         val pos = visible.indexOf(state.focusIndex)
-        if (pos < 0) return@LaunchedEffect
+        if (pos < 0) {
+            handledFocusListTick[0] = focusListTick
+            return@LaunchedEffect
+        }
         listState.scrollToItem(pos)
+        if (groupsFocused && !askedForList) return@LaunchedEffect
+        handledFocusListTick[0] = focusListTick
         runCatching { focusRequester.requestFocus() }
     }
 
@@ -130,29 +153,50 @@ fun ChannelListScreen(
             ) {
                 if (state.groups.isNotEmpty()) {
                     // Scrolls when there are more groups than fit; the bottom padding keeps the last chip clear of the edge.
+                    // OK on a group shows it and moves into the list; resting on one shows it in place.
+                    val groupChip: @Composable (GroupChoice, GroupLabel, Int) -> Unit = { choice, label, count ->
+                        val selected = if (choice.favorites) state.favoritesSelected
+                        else !state.favoritesSelected && state.selectedGroup == choice.group
+                        GroupChip(
+                            label = label,
+                            count = count,
+                            selected = selected,
+                            onClick = {
+                                focusedGroup = null
+                                if (choice.favorites) onSelectFavorites() else onSelectGroup(choice.group)
+                                focusListTick++
+                            },
+                            modifier = Modifier
+                                .onFocusChanged { if (it.isFocused) focusedGroup = choice else if (focusedGroup == choice) focusedGroup = null }
+                                .then(if (selected) Modifier.focusRequester(selectedGroupRequester) else Modifier),
+                        )
+                    }
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         contentPadding = PaddingValues(bottom = 8.dp),
                         modifier = Modifier
                             .width(184.dp)
-                            .fillMaxHeight(),
+                            .fillMaxHeight()
+                            .onFocusChanged {
+                                // Coming in from the list lands on the group being shown, not whichever is level with it.
+                                if (it.hasFocus && !groupsFocused) runCatching { selectedGroupRequester.requestFocus() }
+                                groupsFocused = it.hasFocus
+                            },
                     ) {
                         if (state.favorites.isNotEmpty()) {
                             item(key = "__favorites__") {
-                                GroupChip(FAVORITES_LABEL, state.favorites.size, state.favoritesSelected, onClick = onSelectFavorites)
+                                groupChip(GroupChoice(favorites = true), FAVORITES_LABEL, state.favorites.size)
                             }
                         }
                         item(key = "__all__") {
-                            GroupChip(ALL_LABEL, state.channels.size, !state.favoritesSelected && state.selectedGroup == null) {
-                                onSelectGroup(null)
-                            }
+                            groupChip(GroupChoice(group = null), ALL_LABEL, state.channels.size)
                         }
                         items(state.groups, key = { it }) { group ->
-                            GroupChip(
-                                label = remember(group) { groupLabel(group) },
-                                count = state.channels.count { it.group == group },
-                                selected = !state.favoritesSelected && state.selectedGroup == group,
-                            ) { onSelectGroup(group) }
+                            groupChip(
+                                GroupChoice(group = group),
+                                remember(group) { groupLabel(group) },
+                                state.channels.count { it.group == group },
+                            )
                         }
                     }
                 }
@@ -241,6 +285,12 @@ fun ChannelListScreen(
         )
     }
 }
+
+/** A chip in the group column: the favourites, or [group] (null for all channels). */
+private data class GroupChoice(val group: String? = null, val favorites: Boolean = false)
+
+/** How long focus rests on a group before the list shows it, so moving through groups stays quick. */
+private const val GROUP_FOCUS_DELAY_MS = 300L
 
 private val FAVORITES_LABEL = GroupLabel("⭐", "收藏")
 private val ALL_LABEL = GroupLabel(null, "全部")
@@ -485,14 +535,20 @@ private fun ChannelRow(
 
 /** 40dp pill for a group: emoji in a 20dp slot, 10dp gap, name, count on the right. */
 @Composable
-private fun GroupChip(label: GroupLabel, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun GroupChip(
+    label: GroupLabel,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     FocusRow(
         onClick = onClick,
         selected = selected,
         shape = Radius.Pill,
         contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
         gap = 10.dp,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(40.dp),
     ) {

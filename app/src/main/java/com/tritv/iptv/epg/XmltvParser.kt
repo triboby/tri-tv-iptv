@@ -158,6 +158,6 @@ object XmltvParser {
             programmes.getOrPut(id) { mutableListOf() } += Programme(progStart, progStop, t, desc)
         }
 
-        fun result(): Guide = programmes.mapValues { (_, list) -> list.sortedBy { it.start }.distinctBy { it.start } }
+        fun result(): Guide = programmes.mapValues { (_, list) -> list.sortedBy { it.start }.distinctBy { it.start }.endAtNextStart() }
     }
 }

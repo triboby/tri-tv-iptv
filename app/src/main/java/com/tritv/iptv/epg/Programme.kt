@@ -14,6 +14,15 @@ data class Programme(
         if (stop <= start) 0f else ((now - start).toFloat() / (stop - start)).coerceIn(0f, 1f)
 }
 
+/**
+ * Ends each programme no later than the next one starts, from a list sorted by start time, so the
+ * grid and the "now" line agree when a guide's times overlap (e.g. 21:10–22:17 then 21:23).
+ */
+fun List<Programme>.endAtNextStart(): List<Programme> = mapIndexed { i, p ->
+    val next = getOrNull(i + 1)
+    if (next != null && next.start < p.stop) p.copy(stop = next.start) else p
+}
+
 /** The programme on at [now] and the one after it, from a list sorted by start time. */
 fun List<Programme>.nowAndNext(now: Long): Pair<Programme?, Programme?> {
     val i = indexOfFirst { it.stop > now }
