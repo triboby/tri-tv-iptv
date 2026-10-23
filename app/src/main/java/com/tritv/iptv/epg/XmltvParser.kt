@@ -60,14 +60,23 @@ object XmltvParser {
         val second = if (n >= 14) digits.substring(12, 14).toInt() else 0
         if (month !in 1..12 || day !in 1..31 || hour > 23 || minute > 59 || second > 60) return null
 
-        val offset = Regex("""([+-])(\d{2}):?(\d{2})""").find(s, n)?.let {
-            val sign = if (it.groupValues[1] == "-") -1 else 1
-            sign * (it.groupValues[2].toLong() * 3_600_000 + it.groupValues[3].toLong() * 60_000)
-        } ?: defaultOffsetMs
+        val offset = writtenOffset(s) ?: defaultOffsetMs
         val local = daysFromCivil(year, month, day) * 86_400_000L +
             hour * 3_600_000L + minute * 60_000L + second * 1_000L
         return local - offset
     }
+
+    /** The UTC offset written after a time, in milliseconds, or null when there is none. */
+    private fun writtenOffset(value: String): Long? {
+        val s = value.trim()
+        val n = s.indexOfFirst { !it.isDigit() }.takeIf { it >= 0 } ?: return null
+        return offsetPattern.find(s, n)?.let {
+            val sign = if (it.groupValues[1] == "-") -1 else 1
+            sign * (it.groupValues[2].toLong() * 3_600_000 + it.groupValues[3].toLong() * 60_000)
+        }
+    }
+
+    private val offsetPattern = Regex("""([+-])(\d{2}):?(\d{2})""")
 
     /** Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's algorithm). */
     private fun daysFromCivil(year: Int, month: Int, day: Int): Long {
@@ -88,7 +97,8 @@ object XmltvParser {
     ) : DefaultHandler() {
         val names = HashMap<String, MutableList<String>>()
         val decisions = HashMap<String, Boolean>()
-        val programmes = HashMap<String, MutableList<Programme>>()
+        /** Programmes per channel id, split by the UTC offset their start was written with. */
+        val programmes = HashMap<String, HashMap<Long?, MutableList<Programme>>>()
 
         val text = StringBuilder()
         var collecting = false
@@ -98,6 +108,7 @@ object XmltvParser {
         var progChannel: String? = null
         var progStart = 0L
         var progStop = 0L
+        var progOffset: Long? = null
         var title: String? = null
         var desc: String? = null
 
@@ -149,15 +160,29 @@ object XmltvParser {
             progChannel = id
             progStart = start
             progStop = stop
+            progOffset = writtenOffset(attrs.getValue("start"))
         }
 
         private fun endProgramme() {
             val id = progChannel ?: return
             progChannel = null
             val t = title ?: return
-            programmes.getOrPut(id) { mutableListOf() } += Programme(progStart, progStop, t, desc)
+            programmes.getOrPut(id) { HashMap() }.getOrPut(progOffset) { mutableListOf() } += Programme(progStart, progStop, t, desc)
         }
 
-        fun result(): Guide = programmes.mapValues { (_, list) -> list.sortedBy { it.start }.distinctBy { it.start }.withoutOverlaps() }
+        /**
+         * Per channel: when it is listed both in UTC and in another offset, the guide merges two
+         * sources and the UTC one has been seen to be local time labelled as UTC (CCTV-3's
+         * 13:23 programme as `132340 +0000`), so the other one is kept. Then overlaps are resolved
+         * and anything under a minute, such as a duplicate a few seconds off, is dropped.
+         */
+        fun result(): Guide = programmes.mapValues { (_, byOffset) ->
+            val sets = if (byOffset.size > 1) byOffset.filterKeys { it != 0L } else byOffset
+            sets.values.flatten()
+                .sortedBy { it.start }
+                .distinctBy { it.start }
+                .withoutOverlaps()
+                .filter { it.stop - it.start >= 60_000 }
+        }
     }
 }
