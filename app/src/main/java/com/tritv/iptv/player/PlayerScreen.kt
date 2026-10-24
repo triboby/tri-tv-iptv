@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -75,6 +76,7 @@ import com.tritv.iptv.ui.ChannelJumpPill
 import com.tritv.iptv.ui.ChannelLogo
 import com.tritv.iptv.ui.ClockText
 import com.tritv.iptv.ui.Dot
+import com.tritv.iptv.ui.DrawerWidth
 import com.tritv.iptv.ui.EnterEasing
 import com.tritv.iptv.ui.ExitEasing
 import com.tritv.iptv.ui.GroupCaption
@@ -121,6 +123,11 @@ fun PlayerScreen(
     onZap: (Int) -> Unit,
     onPlayNumber: (Int) -> Unit,
     onExit: () -> Unit,
+    /**
+     * Whether the channel drawer is open over the picture: the drawer then has the keys, and a card in
+     * the bottom-right corner stands in for the info bar.
+     */
+    behindDrawer: Boolean = false,
 ) {
     val context = LocalContext.current
     val player = remember {
@@ -288,7 +295,7 @@ fun PlayerScreen(
         label = "dim",
     )
 
-    LaunchedEffect(channel, attempt.sourceIndex) {
+    LaunchedEffect(channel, attempt.sourceIndex, behindDrawer) {
         showInfo = true
         delay(4_000)
         showInfo = false
@@ -325,9 +332,9 @@ fun PlayerScreen(
     }
 
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(behindDrawer) { if (!behindDrawer) runCatching { focusRequester.requestFocus() } }
 
-    BackHandler(onBack = onExit)
+    BackHandler(enabled = !behindDrawer, onBack = onExit)
 
     Box(
         modifier = Modifier
@@ -369,7 +376,7 @@ fun PlayerScreen(
                     else -> false
                 }
             }
-            .focusable(),
+            .focusable(enabled = !behindDrawer),
     ) {
         AndroidView(
             factory = { ctx ->
@@ -406,7 +413,9 @@ fun PlayerScreen(
             visible = showLoader && loading,
             enter = fadeIn(tween(240, easing = EnterEasing)) + scaleIn(tween(240, easing = EnterEasing), initialScale = 0.96f),
             exit = fadeOut(tween(200, easing = ExitEasing)) + scaleOut(tween(200, easing = ExitEasing), targetScale = 0.98f),
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(start = if (behindDrawer) DrawerWidth else 0.dp),
         ) {
             // Moved off the first line, by the viewer or because a line failed.
             val switching = pickedByViewer || attemptIndex > 0
@@ -460,7 +469,7 @@ fun PlayerScreen(
         }
 
         AnimatedVisibility(
-            visible = showInfo || error != null,
+            visible = behindDrawer || showInfo || error != null,
             enter = fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 3 },
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.TopEnd),
@@ -477,9 +486,21 @@ fun PlayerScreen(
             }
         }
 
+        if (behindDrawer) {
+            DrawerCard(
+                channel = channel,
+                channelNumber = channelNumber,
+                status = error ?: if (lines.size > 1) "线路 ${attempt.sourceIndex + 1}/${lines.size}" else null,
+                isError = error != null,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = ScreenMargin, bottom = 27.dp),
+            )
+        }
+
         // Full-width frosted bar along the bottom edge.
         AnimatedVisibility(
-            visible = showInfo || error != null,
+            visible = !behindDrawer && (showInfo || error != null),
             enter = fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 3 },
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -577,6 +598,53 @@ fun PlayerScreen(
         }
     }
 }
+
+/**
+ * The playing channel while the drawer is open, in the bottom-right corner: number and logo (or
+ * name until one loads) on the first line, line or error and the keys that leave the drawer below.
+ * A fixed 320dp wide, so it does not jump about as the channel changes.
+ */
+@Composable
+private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, isError: Boolean, modifier: Modifier = Modifier) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier
+            .width(320.dp)
+            .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Card)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.height(44.dp),
+        ) {
+            Text("%03d".format(channelNumber), style = CardTitle.tabular())
+            val logo = rememberLogo(channel.logos)
+            if (logo != null) {
+                ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
+            } else {
+                Text(ChannelCategory.label(channel.name), style = CardTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (status != null) {
+                Text(
+                    status,
+                    style = TriTvType.Caption.tabular(),
+                    color = if (isError) TriTvColors.Error else TriTvColors.TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+            KeyHint("OK", "全屏")
+            KeyHint("返回", "收起")
+        }
+    }
+}
+
+/** 28sp semibold: the number and name on the drawer card. */
+private val CardTitle = TriTvType.Tagline.copy(fontSize = 28.sp, lineHeight = 34.sp, letterSpacing = 0.2.sp)
 
 /**
  * Ring with a caption under it, centred on the picture. From 5 s on the second line says how long

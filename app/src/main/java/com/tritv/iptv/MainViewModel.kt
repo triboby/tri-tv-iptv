@@ -56,8 +56,10 @@ data class UiState(
     /** Set for a moment after an import from the source page succeeds, before going back to the list. */
     val imported: Boolean = false,
     val error: String? = null,
-    /** Index into [channels] of the channel being played, or null when browsing. */
+    /** Index into [channels] of the channel playing, full screen or behind the channel drawer. */
     val playingIndex: Int? = null,
+    /** Whether the channel drawer is open over the playing channel; closed means full screen. */
+    val listOpen: Boolean = true,
     /** The playing channel's lines in the order to try them, fixed when it started. */
     val playingLines: List<PlaylistEntry> = emptyList(),
     /** Index into [channels] the list should focus, e.g. after leaving the player. */
@@ -139,6 +141,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     repo.savedUrl = trimmed
                     playlistGuideUrl = playlist.guideUrl
                     val last = channels.indexOfFirst { it.stableKey == repo.lastChannelKey }.coerceAtLeast(0)
+                    // The last channel plays behind the drawer from the start.
+                    val playing = last.takeIf { channels.isNotEmpty() }
                     val fromSourcePage = _state.value.showSettings && channels.isNotEmpty()
                     _state.update {
                         it.copy(
@@ -149,6 +153,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             favoritesSelected = false,
                             movingFavorite = null,
                             focusIndex = last,
+                            playingIndex = playing,
+                            playingLines = playing?.let { i -> lines.ordered(channels[i]) }.orEmpty(),
+                            listOpen = true,
                             error = if (channels.isEmpty()) "播放列表中没有频道" else null,
                             loadedAt = System.currentTimeMillis(),
                             // Back to the list once there is something to show, after "已导入" has been seen.
@@ -274,7 +281,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
-    fun openGuide() = _state.update { it.copy(showGuide = true, playingIndex = null) }
+    fun openGuide() = _state.update { it.copy(showGuide = true) }
 
     fun closeGuide() = _state.update { it.copy(showGuide = false) }
 
@@ -316,13 +323,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         repo.favorites = _state.value.favorites
     }
 
+    /** Plays channel [index] full screen; the one already playing behind the drawer just goes full screen. */
     fun play(index: Int) {
+        if (index == _state.value.playingIndex) {
+            _state.update { it.copy(listOpen = false, focusIndex = index, showGuide = false) }
+            return
+        }
+        start(index, listOpen = false)
+    }
+
+    /** Switches the channel playing behind the open drawer, keeping the drawer open. */
+    fun preview(index: Int) {
+        if (index == _state.value.playingIndex) return
+        start(index, listOpen = true)
+    }
+
+    private fun start(index: Int, listOpen: Boolean) {
         val channels = _state.value.channels
         if (index !in channels.indices) return
         val channel = channels[index]
         repo.lastChannelKey = channel.stableKey
         _state.update {
-            it.copy(playingIndex = index, playingLines = lines.ordered(channel), focusIndex = index, showGuide = false)
+            it.copy(
+                playingIndex = index,
+                playingLines = lines.ordered(channel),
+                focusIndex = if (listOpen) it.focusIndex else index,
+                listOpen = listOpen,
+                showGuide = false,
+            )
         }
         // Fresh numbers let the player skip a line that turns out dead before its own timeout.
         if (channel.sources.size > 1) {
@@ -360,7 +388,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         play(index)
     }
 
-    fun stop() = _state.update { it.copy(playingIndex = null) }
+    /** Opens the channel drawer over the playing channel, with focus on it. */
+    fun openList() = _state.update { it.copy(listOpen = true, focusIndex = it.playingIndex ?: it.focusIndex) }
+
+    /** Closes the drawer so the playing channel is full screen; stays open when nothing plays. */
+    fun closeList() = _state.update { if (it.playingIndex != null) it.copy(listOpen = false) else it }
 }
 
 /** How long "已导入" stays on the source page before the list comes back. */
