@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/icon.png" width="128" height="128" alt="tri.tv 图标">
+  <img src="docs/icon.png" width="128" height="128" alt="tri.iptv 图标">
 </p>
 
-<h1 align="center">tri.tv</h1>
+<h1 align="center">tri.iptv</h1>
 
 <p align="center">
   为电视遥控器设计的 IPTV 直播应用，面向 Android TV（在 Sony BRAVIA / Android 10 上实测）。<br>
