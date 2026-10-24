@@ -41,6 +41,11 @@ class NumberEntry internal constructor() {
         if (n != null && n > 0) committed?.invoke(n)
     }
 
+    /** Drops the digits typed so far without jumping. */
+    fun clear() {
+        digits = ""
+    }
+
     val active: Boolean get() = digits.isNotEmpty()
 
     private companion object {

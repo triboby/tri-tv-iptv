@@ -72,7 +72,6 @@ import com.tritv.iptv.data.LineStat
 import com.tritv.iptv.data.PlaylistEntry
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
-import com.tritv.iptv.ui.ChannelJumpPill
 import com.tritv.iptv.ui.ChannelLogo
 import com.tritv.iptv.ui.ClockText
 import com.tritv.iptv.ui.Dot
@@ -118,8 +117,10 @@ fun PlayerScreen(
     onOpenGuide: () -> Unit,
     /** Index of the channel that many steps away in the current list, for the zap preview. */
     zapTarget: (Int) -> Int?,
-    /** Name of the channel with this list number (1-based), or null if there is none. */
-    channelName: (Int) -> String?,
+    /** The channel with this list number (1-based), or null if there is none. */
+    channelAt: (Int) -> Channel?,
+    /** Guide programmes of a channel, for what the zap or number card lands on. */
+    programmesOf: (Channel) -> List<Programme>,
     onZap: (Int) -> Unit,
     onPlayNumber: (Int) -> Unit,
     onExit: () -> Unit,
@@ -343,7 +344,8 @@ fun PlayerScreen(
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(behindDrawer) { if (!behindDrawer) runCatching { focusRequester.requestFocus() } }
 
-    BackHandler(enabled = !behindDrawer, onBack = onExit)
+    // Back drops a half-typed number first, then goes back to the drawer.
+    BackHandler(enabled = !behindDrawer) { if (numberEntry.active) numberEntry.clear() else onExit() }
 
     Box(
         modifier = Modifier
@@ -442,19 +444,23 @@ fun PlayerScreen(
             )
         }
 
-        // Where a burst of Up/Down or the typed digits will land.
+        // Where a burst of Up/Down or the typed digits will land, in the drawer's corner card.
         val jumpNumber = when {
+            behindDrawer -> null
             numberEntry.active -> numberEntry.digits
             pendingZap != 0 -> zapTarget(pendingZap)?.let { "%03d".format(it + 1) }
             else -> null
         }
         if (jumpNumber != null) {
-            ChannelJumpPill(
+            val target = channelAt(jumpNumber.toInt())
+            JumpCard(
                 number = jumpNumber,
-                name = channelName(jumpNumber.toInt()),
+                typing = numberEntry.active,
+                channel = target,
+                programmes = target?.let(programmesOf).orEmpty(),
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 80.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = ScreenMargin, bottom = 28.dp),
             )
         }
 
@@ -511,7 +517,8 @@ fun PlayerScreen(
 
         // Full-width frosted bar along the bottom edge.
         AnimatedVisibility(
-            visible = !behindDrawer && (showInfo || error != null),
+            // Makes way for the jump card, which sits over its right end.
+            visible = !behindDrawer && jumpNumber == null && (showInfo || error != null),
             enter = fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 3 },
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -625,19 +632,7 @@ private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, is
             .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Card)
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.height(44.dp),
-        ) {
-            Text("%03d".format(channelNumber), style = CardTitle.tabular())
-            val logo = rememberLogo(channel.logos)
-            if (logo != null) {
-                ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
-            } else {
-                Text(ChannelCategory.label(channel.name), style = CardTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
+        CardHeader("%03d".format(channelNumber), channel)
         // An error is too long to share a line with the keys, so it gets up to two lines of its own.
         if (isError && status != null) {
             Text(status, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -653,6 +648,68 @@ private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, is
 }
 
 /** 28sp semibold: the number and name on the drawer card. */
+/**
+ * First line of a corner card: the number, then the logo (or the name until one loads). With
+ * [caret] a blue bar follows the number as it is typed; with no [channel] the number leads nowhere.
+ */
+@Composable
+private fun CardHeader(number: String, channel: Channel?, caret: Boolean = false) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.height(44.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(number, style = CardTitle.tabular())
+            if (caret) Box(Modifier.size(width = 2.dp, height = 28.dp).background(TriTvColors.SkyBlue))
+        }
+        if (channel == null) {
+            Text("没有这个频道", style = CardTitle, color = TriTvColors.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        } else {
+            val logo = rememberLogo(channel.logos)
+            if (logo != null) {
+                ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
+            } else {
+                Text(ChannelCategory.label(channel.name), style = CardTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/**
+ * Where Up/Down or a typed number is about to go, in place of the drawer's card: number and logo,
+ * then what that channel is showing, so the viewer knows before it switches. While a number is
+ * typed the keys to switch now or give up follow.
+ */
+@Composable
+private fun JumpCard(number: String, typing: Boolean, channel: Channel?, programmes: List<Programme>, modifier: Modifier = Modifier) {
+    val now = rememberNow()
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier
+            .width(320.dp)
+            .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Card)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+    ) {
+        CardHeader(number, channel, caret = typing)
+        programmes.nowAndNext(now).first?.let { current ->
+            Text(
+                "正在播 · ${current.title}",
+                style = TriTvType.Caption,
+                color = TriTvColors.TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (typing) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                KeyHint("OK", "立即换台")
+                KeyHint("返回", "取消")
+            }
+        }
+    }
+}
+
 private val CardTitle = TriTvType.Tagline.copy(fontSize = 28.sp, lineHeight = 36.sp, letterSpacing = 0.2.sp)
 
 /**
