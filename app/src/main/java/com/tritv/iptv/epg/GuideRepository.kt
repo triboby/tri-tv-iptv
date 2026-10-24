@@ -125,7 +125,7 @@ class GuideRepository(context: Context) {
             conn.connectTimeout = 15_000
             conn.readTimeout = 60_000
             conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "TriTV/1.0")
+            conn.setRequestProperty("User-Agent", "tri.iptv/1.0")
             // Asked for by name, a gzip response is handed over as sent rather than unpacked, so the
             // cache keeps the few MB that came over the wire instead of tens of MB of XML; it is
             // unpacked as it is parsed.

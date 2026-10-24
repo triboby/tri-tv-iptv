@@ -96,7 +96,7 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private const val DEFAULT_USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
+private const val DEFAULT_USER_AGENT = "tri.iptv/1.0 (Linux; Android) ExoPlayer"
 
 @OptIn(UnstableApi::class)
 @Composable
