@@ -476,7 +476,7 @@ private fun MissingFavoriteRow(key: String, onLongClick: () -> Unit) {
     FocusRow(
         onClick = {},
         onLongClick = onLongClick,
-        contentPadding = PaddingValues(horizontal = 12.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp),
         gap = 12.dp,
         modifier = Modifier
             .fillMaxWidth()
@@ -507,7 +507,7 @@ private fun ListHeader(state: UiState, focusedPos: Int, count: Int) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(40.dp)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 10.dp),
         ) {
             Text(
                 title,
@@ -548,7 +548,7 @@ private fun ListHeader(state: UiState, focusedPos: Int, count: Int) {
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
                     .height(28.dp)
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 10.dp),
             ) {
                 KeyHint("▲▼", "移动")
                 KeyHint("OK", "放下")
@@ -562,7 +562,7 @@ private fun ListHeader(state: UiState, focusedPos: Int, count: Int) {
 private val NumberWidth = 28.dp
 
 /**
- * 52dp row, 12dp in from both sides with 12dp gaps: number, then the name with its category and the
+ * 52dp row, 10dp in from both sides like the group chips, with 12dp gaps: number, then the name with its category and the
  * current programme under it, then "正在播" for the channel behind the drawer and a star for a favourite.
  */
 @Composable
@@ -583,7 +583,7 @@ private fun ChannelRow(
         onClick = onClick,
         onLongClick = onLongClick,
         selected = moving,
-        contentPadding = PaddingValues(horizontal = 12.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp),
         gap = 12.dp,
         modifier = modifier
             .fillMaxWidth()
@@ -764,7 +764,7 @@ private fun DrawerSkeleton() {
                 contentAlignment = Alignment.CenterStart,
                 modifier = Modifier
                     .height(46.dp)
-                    .padding(start = 12.dp, bottom = 6.dp),
+                    .padding(start = 10.dp, bottom = 6.dp),
             ) {
                 SkeletonBar(96.dp, 20.dp, bar, Radius.Small)
             }
@@ -774,7 +774,7 @@ private fun DrawerSkeleton() {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier
                         .height(52.dp)
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = 10.dp),
                 ) {
                     Box(Modifier.width(NumberWidth)) { SkeletonBar(26.dp, 12.dp, bar) }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
