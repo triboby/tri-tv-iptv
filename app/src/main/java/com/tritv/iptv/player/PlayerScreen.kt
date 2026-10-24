@@ -67,12 +67,11 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.tritv.iptv.data.Channel
-import com.tritv.iptv.data.ChannelCategory
 import com.tritv.iptv.data.LineStat
 import com.tritv.iptv.data.PlaylistEntry
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
-import com.tritv.iptv.ui.ChannelLogo
+import com.tritv.iptv.ui.ChannelBadge
 import com.tritv.iptv.ui.ClockText
 import com.tritv.iptv.ui.Dot
 import com.tritv.iptv.ui.DrawerWidth
@@ -88,7 +87,6 @@ import com.tritv.iptv.ui.StarIcon
 import com.tritv.iptv.ui.TriTvColors
 import com.tritv.iptv.ui.TriTvType
 import com.tritv.iptv.ui.digitOf
-import com.tritv.iptv.ui.rememberLogo
 import com.tritv.iptv.ui.rememberNow
 import com.tritv.iptv.ui.NumberEntry
 import com.tritv.iptv.ui.tabular
@@ -552,27 +550,9 @@ fun PlayerScreen(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     // The guide makes way for an error, which then gets the full width.
                     val showGuide = (current != null || next != null) && error == null
-                    // The logo stands in for the name, as on the channel list; text until one loads.
-                    val logo = rememberLogo(channel.logos)
-                    // Number and logo as one unit, as in the corner card: the logo 8dp after the digits.
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("%03d".format(channelNumber), style = TriTvType.PlayerNumber.tabular())
-                        if (logo != null) ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
-                    }
-                    if (logo == null) {
-                        Text(
-                            ChannelCategory.label(channel.name),
-                            style = TriTvType.Tagline,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = if (showGuide) Modifier.width(240.dp) else Modifier.weight(1f),
-                        )
-                    }
-                    if (showGuide) {
-                        NowAndNext(current, next, now, Modifier.weight(1f))
-                    } else if (logo != null) {
-                        Spacer(Modifier.weight(1f))
-                    }
+                    // Number and logo (or name) exactly as in the corner card.
+                    ChannelBadge("%03d".format(channelNumber), channel)
+                    if (showGuide) NowAndNext(current, next, now, Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
                 }
                 // Status on the left (favourite, group, line, problems), key hints on the right.
                 Row(
@@ -647,7 +627,7 @@ private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, is
             .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Card)
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        CardHeader("%03d".format(channelNumber), channel)
+        ChannelBadge("%03d".format(channelNumber), channel)
         // An error is too long to share a line with the keys, so it gets up to two lines of its own.
         if (isError && status != null) {
             Text(status, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -658,33 +638,6 @@ private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, is
             }
             KeyHint("OK", "全屏")
             KeyHint("返回", "收起")
-        }
-    }
-}
-
-/** 28sp semibold: the number and name on the drawer card. */
-/**
- * First line of a corner card: the number, then the logo (or the name until one loads); with no
- * [channel] the number leads nowhere.
- */
-@Composable
-private fun CardHeader(number: String, channel: Channel?) {
-    val logo = channel?.let { rememberLogo(it.logos) }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        // A logo sits closer than a name: the digits' own side bearing already adds to the gap.
-        horizontalArrangement = Arrangement.spacedBy(if (logo != null) 8.dp else 12.dp),
-        modifier = Modifier.height(44.dp),
-    ) {
-        Text(number, style = CardTitle.tabular())
-        if (channel == null) {
-            Text("没有这个频道", style = CardTitle, color = TriTvColors.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        } else {
-            if (logo != null) {
-                ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
-            } else {
-                Text(ChannelCategory.label(channel.name), style = CardTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
         }
     }
 }
@@ -704,7 +657,7 @@ private fun JumpCard(number: String, typing: Boolean, channel: Channel?, program
             .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Card)
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        CardHeader(number, channel)
+        ChannelBadge(number, channel)
         programmes.nowAndNext(now).first?.let { current ->
             Text(
                 "正在播 · ${current.title}",
@@ -723,7 +676,6 @@ private fun JumpCard(number: String, typing: Boolean, channel: Channel?, program
     }
 }
 
-private val CardTitle = TriTvType.Tagline.copy(fontSize = 28.sp, lineHeight = 36.sp, letterSpacing = 0.2.sp)
 
 /**
  * Ring with a caption under it, centred on the picture. From 5 s on the second line says how long
