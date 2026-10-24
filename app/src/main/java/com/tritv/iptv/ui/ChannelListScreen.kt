@@ -224,11 +224,10 @@ fun ChannelListScreen(
                     modifier = Modifier
                         .width(railWidth)
                         .fillMaxHeight()
-                        .onFocusChanged {
-                            // Coming in from the list lands on the group being shown, not whichever is level with it.
-                            if (it.hasFocus && !groupsFocused) runCatching { selectedGroupRequester.requestFocus() }
-                            groupsFocused = it.hasFocus
-                        },
+                        // Only notes where focus is. Moving between the groups and the entries below them can
+                        // report "no focus" for a moment, so sending focus anywhere from here bounced it back
+                        // to the selected group; Left from the list does that instead.
+                        .onFocusChanged { groupsFocused = it.hasFocus },
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -324,9 +323,17 @@ fun ChannelListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
+                            // Left lands on the group being shown, not whichever is level with the row.
                             // While a favourite is being moved, Up/Down move it and OK puts it down.
                             .onPreviewKeyEvent { event ->
-                                if (moving == null) return@onPreviewKeyEvent false
+                                if (moving == null) {
+                                    if (event.key != Key.DirectionLeft) return@onPreviewKeyEvent false
+                                    if (event.type == KeyEventType.KeyDown) {
+                                        runCatching { selectedGroupRequester.requestFocus() }
+                                            .onFailure { runCatching { firstGroupRequester.requestFocus() } }
+                                    }
+                                    return@onPreviewKeyEvent true
+                                }
                                 val down = event.type == KeyEventType.KeyDown
                                 when (event.key) {
                                     Key.DirectionUp -> { if (down) onMove(-1); true }
