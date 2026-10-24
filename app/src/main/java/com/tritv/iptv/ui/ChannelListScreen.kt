@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -58,9 +59,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Text
 import com.tritv.iptv.UiState
+import com.tritv.iptv.data.Channel
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -105,8 +108,13 @@ fun ChannelListScreen(
 ) {
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
-    val visible = state.visibleIndices
-    var focusedIndex by remember { mutableIntStateOf(state.focusIndex) }
+    // Remembered: the getter builds a new list each time, and a new list recomposes every row.
+    val visible = remember(state.channels, state.selectedGroup, state.favoritesSelected, state.favorites) { state.visibleIndices }
+    val groupCounts = remember(state.channels) { state.channels.groupingBy { it.group }.eachCount() }
+    val favoriteKeys = remember(state.favorites) { state.favorites.toHashSet() }
+    // Read only in snapshots and in the header, never in this body: a focus move then recomposes
+    // the header alone instead of the whole drawer.
+    val focusedState = remember { mutableIntStateOf(state.focusIndex) }
     // Channel key whose long-press menu is open.
     var menuFor by remember { mutableStateOf<String?>(null) }
     val now = rememberNow()
@@ -154,10 +162,12 @@ fun ChannelListScreen(
     }
 
     // Resting on a channel plays it behind the drawer; moving through the list starts nothing.
-    LaunchedEffect(focusedIndex, groupsFocused, moving) {
+    LaunchedEffect(groupsFocused, moving) {
         if (groupsFocused || moving != null) return@LaunchedEffect
-        delay(PREVIEW_DELAY_MS)
-        onPreview(focusedIndex)
+        snapshotFlow { focusedState.intValue }.collectLatest { index ->
+            delay(PREVIEW_DELAY_MS)
+            onPreview(index)
+        }
     }
 
     // Put focus back on the playing channel when the drawer (re)opens.
@@ -270,7 +280,7 @@ fun ChannelListScreen(
                                 groupChip(
                                     GroupChoice(group = group),
                                     remember(group) { groupLabel(group) },
-                                    state.channels.count { it.group == group },
+                                    groupCounts[group] ?: 0,
                                     3 + i,
                                     false,
                                     i == state.groups.lastIndex,
@@ -304,7 +314,8 @@ fun ChannelListScreen(
                         .width(DrawerListWidth)
                         .fillMaxHeight(),
                 ) {
-                    ListHeader(state, visible.indexOf(focusedIndex), visible.size)
+                    // Read inside the header, so a focus move recomposes it alone and not the whole drawer.
+                    ListHeader(state, { visible.indexOf(focusedState.intValue) }, visible.size)
                     LazyColumn(
                         state = listState,
                         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -335,8 +346,9 @@ fun ChannelListScreen(
                         itemsIndexed(visible, key = { _, index -> index }) { pos, index ->
                             val channel = state.channels[index]
                             ChannelRow(
-                                state = state,
-                                index = index,
+                                channel = channel,
+                                programmes = state.programmesOf(channel),
+                                isFavorite = channel.stableKey in favoriteKeys,
                                 number = index + 1,
                                 now = now,
                                 moving = channel.stableKey == moving,
@@ -345,7 +357,7 @@ fun ChannelListScreen(
                                 onLongClick = { menuFor = channel.stableKey },
                                 modifier = Modifier
                                     .arrive(pos + 1, entrance)
-                                    .onFocusChanged { if (it.isFocused) focusedIndex = index }
+                                    .onFocusChanged { if (it.isFocused) focusedState.intValue = index }
                                     .then(if (index == state.focusIndex) Modifier.focusRequester(focusRequester) else Modifier),
                             )
                         }
@@ -504,7 +516,7 @@ private fun MissingFavoriteRow(key: String, onLongClick: () -> Unit) {
  * moved the keys for that go underneath; a reload or a load error replaces the position.
  */
 @Composable
-private fun ListHeader(state: UiState, focusedPos: Int, count: Int) {
+private fun ListHeader(state: UiState, focusedPos: () -> Int, count: Int) {
     val title = when {
         state.favoritesSelected -> "收藏"
         state.selectedGroup == null -> "全部"
@@ -545,11 +557,14 @@ private fun ListHeader(state: UiState, focusedPos: Int, count: Int) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 160.dp),
                 )
-                else -> Text(
-                    if (focusedPos >= 0) "${focusedPos + 1} / $count" else "$count 个",
-                    style = TriTvType.Caption.tabular(),
-                    color = TriTvColors.TextMuted,
-                )
+                else -> {
+                    val pos = focusedPos()
+                    Text(
+                        if (pos >= 0) "${pos + 1} / $count" else "$count 个",
+                        style = TriTvType.Caption.tabular(),
+                        color = TriTvColors.TextMuted,
+                    )
+                }
             }
         }
         if (state.movingFavorite != null) {
@@ -577,8 +592,9 @@ private val NumberWidth = 28.dp
  */
 @Composable
 private fun ChannelRow(
-    state: UiState,
-    index: Int,
+    channel: Channel,
+    programmes: List<Programme>,
+    isFavorite: Boolean,
     number: Int,
     now: Long,
     moving: Boolean,
@@ -587,7 +603,6 @@ private fun ChannelRow(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val channel = state.channels[index]
     var focused by remember { mutableStateOf(false) }
     FocusRow(
         onClick = onClick,
@@ -622,7 +637,7 @@ private fun ChannelRow(
                     Text(it, style = TriTvType.Caption, color = dim, maxLines = 1, softWrap = false)
                 }
             }
-            val current = state.programmesOf(channel).nowAndNext(now).first
+            val current = programmes.nowAndNext(now).first
             if (current != null) {
                 Text(current.title, style = TriTvType.Small, color = dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -631,7 +646,7 @@ private fun ChannelRow(
         if (playing) NowPlayingMark(if (focused) TriTvColors.Text else TriTvColors.SkyBlue)
         when {
             moving -> MoveIcon()
-            state.isFavorite(channel) -> StarIcon()
+            isFavorite -> StarIcon()
         }
     }
 }

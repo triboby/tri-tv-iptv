@@ -153,10 +153,11 @@ object XmltvParser {
             title = null
             desc = null
             val id = attrs.getValue("channel") ?: return
+            // Most of a guide is channels the playlist lacks: skip those before parsing any times.
+            if (!decisions.getOrPut(id) { wanted(id, names[id].orEmpty()) }) return
             val start = attrs.getValue("start")?.let { parseTime(it, defaultOffsetMs) } ?: return
             val stop = attrs.getValue("stop")?.let { parseTime(it, defaultOffsetMs) } ?: return
             if (stop <= start || stop <= from || start >= to) return
-            if (!decisions.getOrPut(id) { wanted(id, names[id].orEmpty()) }) return
             progChannel = id
             progStart = start
             progStop = stop

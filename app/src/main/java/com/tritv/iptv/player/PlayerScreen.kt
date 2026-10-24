@@ -60,6 +60,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
@@ -131,7 +132,10 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val player = remember {
-        ExoPlayer.Builder(context, TvRenderersFactory(context)).build().apply { playWhenReady = true }
+        ExoPlayer.Builder(context, TvRenderersFactory(context))
+            .setLoadControl(liveLoadControl())
+            .build()
+            .apply { playWhenReady = true }
     }
     DisposableEffect(player) {
         onDispose { player.release() }
@@ -704,6 +708,23 @@ private fun BufferingIndicator(caption: String, detail: String, since: Long) {
         }
     }
 }
+
+/**
+ * Buffers sized for live TV on a 1–2 GB box. The default keeps up to 50 s, bounded at ~128 MB for
+ * video, in the Java heap; a live stream rarely has more than ~30 s behind its edge anyway. Play
+ * starts after 1.5 s of media instead of 2.5 s.
+ */
+@OptIn(UnstableApi::class)
+private fun liveLoadControl() = DefaultLoadControl.Builder()
+    .setBufferDurationsMs(
+        /* minBufferMs = */ 15_000,
+        /* maxBufferMs = */ 30_000,
+        /* bufferForPlaybackMs = */ 1_500,
+        /* bufferForPlaybackAfterRebufferMs = */ 3_000,
+    )
+    .setTargetBufferBytes(32 * 1024 * 1024)
+    .setPrioritizeTimeOverSizeThresholds(false)
+    .build()
 
 /** Buffering shorter than this shows no loading ring. */
 private const val LOADER_DELAY_MS = 400L

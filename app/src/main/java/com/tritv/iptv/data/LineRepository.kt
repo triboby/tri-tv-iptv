@@ -6,14 +6,17 @@ import android.net.NetworkCapabilities
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
@@ -40,6 +43,12 @@ class LineRepository(context: Context) {
     private val sweepLimit = Semaphore(SWEEP_CONCURRENCY)
     // Probes run here so one stuck on a socket can be abandoned without blocking its caller.
     private val probeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Lines whose stat changed since the last write. A sweep records ~200 results, and every
+    // SharedPreferences write rewrites the whole file, so they are saved together a moment later.
+    private val unsaved: MutableSet<String> = Collections.synchronizedSet(HashSet())
+    private val saveLock = Any()
+    private var saveJob: Job? = null
 
     /** [channel]'s lines in the order to try them. */
     fun ordered(channel: Channel): List<PlaylistEntry> {
@@ -74,9 +83,33 @@ class LineRepository(context: Context) {
         val gone = _stats.value.keys - keep
         if (gone.isEmpty()) return
         _stats.update { it - gone }
+        unsaved += gone
+        save()
+    }
+
+    /** Writes the stats changed since the last write. */
+    fun save() {
+        synchronized(saveLock) {
+            saveJob?.cancel()
+            saveJob = null
+        }
+        val urls = synchronized(unsaved) { unsaved.toList().also { unsaved.clear() } }
+        if (urls.isEmpty()) return
+        val stats = _stats.value
         val editor = statPrefs.edit()
-        for (url in gone) editor.remove(url)
+        for (url in urls) {
+            val stat = stats[url]
+            if (stat == null) editor.remove(url) else editor.putString(url, LineRanker.encode(stat))
+        }
         editor.apply()
+    }
+
+    private fun saveSoon() = synchronized(saveLock) {
+        if (saveJob?.isActive == true) return
+        saveJob = probeScope.launch {
+            delay(SAVE_DELAY_MS)
+            save()
+        }
     }
 
     /** Probes [channel]'s lines checked longer than [maxAgeMs] ago, all at once. */
@@ -130,7 +163,10 @@ class LineRepository(context: Context) {
             updated = next
             all + (url to next)
         }
-        updated?.let { statPrefs.edit().putString(url, LineRanker.encode(it)).apply() }
+        if (updated != null) {
+            unsaved += url
+            saveSoon()
+        }
     }
 
     /**
@@ -155,7 +191,9 @@ class LineRepository(context: Context) {
         const val SWEEP_MAX_AGE_MS = 30 * 60_000L
         /** Lines of the channel being opened are re-probed when older than this. */
         const val PLAY_MAX_AGE_MS = 2 * 60_000L
-        private const val SWEEP_CONCURRENCY = 6
+        private const val SWEEP_CONCURRENCY = 3
+        /** How long changed stats wait to be written together. */
+        private const val SAVE_DELAY_MS = 5_000L
         /** Socket connect and read timeout for each request of a probe. */
         private const val PROBE_TIMEOUT_MS = 3_000
         /** Most a whole probe (playlist, variant, segment, redirects) may take. */

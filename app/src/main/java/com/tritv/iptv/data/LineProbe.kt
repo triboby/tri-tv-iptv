@@ -17,12 +17,15 @@ internal object LineProbe {
         val start = System.nanoTime()
         var latency: Int? = null
         var url = entry.url
+        // Set once [url] is a media segment, which only needs its first bytes.
+        var segment = false
         repeat(MAX_STEPS) {
-            val body = fetch(url, entry, timeoutMs, track) ?: return null
+            val body = fetch(url, entry, timeoutMs, segment, track) ?: return null
             if (latency == null) latency = ((System.nanoTime() - start) / 1_000_000).toInt()
             val text = body.playlist ?: return if (body.html) null else latency
             // An empty live playlist is still a working line; the next refresh will have segments.
             val next = nextUri(text) ?: return latency
+            segment = !isMaster(text)
             url = URL(URL(body.finalUrl), next).toString()
         }
         return latency
@@ -32,6 +35,9 @@ internal object LineProbe {
      * The URI the player would load next from an HLS playlist: the first variant of a master
      * playlist, or the newest segment of a media playlist. Null when it lists none.
      */
+    /** Whether [playlist] lists variants rather than media segments. */
+    fun isMaster(playlist: String): Boolean = playlist.contains("#EXT-X-STREAM-INF")
+
     fun nextUri(playlist: String): String? {
         val lines = playlist.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
         val variant = lines.indexOfFirst { it.startsWith("#EXT-X-STREAM-INF") }
@@ -44,7 +50,7 @@ internal object LineProbe {
 
     private class Body(val finalUrl: String, val playlist: String?, val html: Boolean)
 
-    private fun fetch(start: String, entry: PlaylistEntry, timeoutMs: Int, track: (HttpURLConnection) -> Unit): Body? {
+    private fun fetch(start: String, entry: PlaylistEntry, timeoutMs: Int, segment: Boolean, track: (HttpURLConnection) -> Unit): Body? {
         var url = URL(start)
         repeat(MAX_REDIRECTS) {
             val conn = url.openConnection() as HttpURLConnection
@@ -55,6 +61,9 @@ internal object LineProbe {
                 conn.instanceFollowRedirects = false
                 conn.setRequestProperty("User-Agent", entry.userAgent ?: USER_AGENT)
                 entry.referrer?.let { conn.setRequestProperty("Referer", it) }
+                // Only the first bytes are read; without a range the server pushes a TCP window's
+                // worth of a multi-MB segment before the disconnect. Servers that ignore it send 200.
+                if (segment) conn.setRequestProperty("Range", "bytes=0-${SEGMENT_BYTES - 1}")
                 val code = conn.responseCode
                 if (code in 300..399) {
                     url = URL(url, conn.getHeaderField("Location") ?: return null)
@@ -105,6 +114,7 @@ internal object LineProbe {
     private const val MAX_STEPS = 3
     private const val MAX_REDIRECTS = 5
     private const val HEAD_BYTES = 16
+    private const val SEGMENT_BYTES = 1024
     private const val MAX_PLAYLIST_BYTES = 256 * 1024
     private const val USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
 }
