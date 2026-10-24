@@ -41,6 +41,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +52,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Text
 import com.tritv.iptv.UiState
+import com.tritv.iptv.data.ChannelCategory
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
 import kotlinx.coroutines.delay
@@ -92,6 +94,10 @@ fun ChannelListScreen(
             entrance = false
         }
     }
+
+    // Fetch every channel's logo in the background, so moving focus or zapping shows it at once.
+    val context = LocalContext.current.applicationContext
+    LaunchedEffect(state.channels) { LogoCache.preload(context, state.channels.map { it.logos }) }
 
     BackHandler(enabled = moving != null) { onFinishMove(true) }
 
@@ -458,7 +464,10 @@ private fun SubNav(state: UiState, onOpenSettings: () -> Unit, onOpenGuide: () -
     }
 }
 
-/** The focused channel, centred in large type with its number, group, line count and current programme beneath. */
+/**
+ * The focused channel, centred: its logo (or its name in large type until one loads), with number,
+ * group, line count and current programme beneath.
+ */
 @Composable
 private fun Hero(state: UiState, focusedIndex: Int, now: Long) {
     val index = focusedIndex.takeIf { it in state.channels.indices } ?: 0
@@ -472,13 +481,19 @@ private fun Hero(state: UiState, focusedIndex: Int, now: Long) {
             .background(TriTvColors.Black)
             .padding(horizontal = ScreenMargin),
     ) {
-        Text(
-            channel.name,
-            style = TriTvType.Display,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // The logo stands in for the name: CCTV's even spells out the category ("科教").
+        val logo = rememberLogo(channel.logos)
+        if (logo != null) {
+            ChannelLogo(logo, ChannelCategory.label(channel.name), height = 56.dp, maxWidth = 240.dp)
+        } else {
+            Text(
+                ChannelCategory.label(channel.name),
+                style = TriTvType.Display,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("%03d".format(index + 1), style = TriTvType.Body.tabular(), color = TriTvColors.TextMuted)
             channel.group?.let {
@@ -503,8 +518,8 @@ private fun Hero(state: UiState, focusedIndex: Int, now: Long) {
 }
 
 /**
- * 48dp row: number in a fixed 36dp right-aligned column, a 16dp star (or move arrows) slot, name,
- * current programme, then group and line count. 16dp gaps.
+ * 48dp row: number in a fixed 36dp right-aligned column, a 16dp star (or move arrows) slot, name
+ * with its category in muted type, current programme, then group and line count. 16dp gaps.
  */
 @Composable
 private fun ChannelRow(
@@ -539,13 +554,22 @@ private fun ChannelRow(
             }
         }
         val current = state.programmesOf(channel).nowAndNext(now).first
-        Text(
-            channel.name,
-            style = TriTvType.Body,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = if (current != null) Modifier.width(180.dp) else Modifier.weight(1f),
-        )
+        ) {
+            Text(
+                channel.name,
+                style = TriTvType.Body,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            channel.category?.let {
+                Text(it, style = TriTvType.Caption, color = dim, maxLines = 1, softWrap = false)
+            }
+        }
         if (current != null) {
             Text(
                 current.title,

@@ -10,7 +10,7 @@ import org.junit.Test
 class EpgMatcherTest {
 
     private fun channel(name: String, tvgId: String? = null, tvgName: String? = null) =
-        Channel(name, "央视", null, listOf(PlaylistEntry(name, "http://x/$name", tvgId = tvgId, tvgName = tvgName)))
+        Channel(name, "央视", emptyList(), listOf(PlaylistEntry(name, "http://x/$name", tvgId = tvgId, tvgName = tvgName)))
 
     private fun prog(title: String) = listOf(Programme(0, 1, title))
 

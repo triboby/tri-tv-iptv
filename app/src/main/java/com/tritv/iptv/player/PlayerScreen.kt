@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -65,11 +66,13 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.tritv.iptv.data.Channel
+import com.tritv.iptv.data.ChannelCategory
 import com.tritv.iptv.data.LineStat
 import com.tritv.iptv.data.PlaylistEntry
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
 import com.tritv.iptv.ui.ChannelJumpPill
+import com.tritv.iptv.ui.ChannelLogo
 import com.tritv.iptv.ui.ClockText
 import com.tritv.iptv.ui.Dot
 import com.tritv.iptv.ui.EnterEasing
@@ -84,6 +87,7 @@ import com.tritv.iptv.ui.StarIcon
 import com.tritv.iptv.ui.TriTvColors
 import com.tritv.iptv.ui.TriTvType
 import com.tritv.iptv.ui.digitOf
+import com.tritv.iptv.ui.rememberLogo
 import com.tritv.iptv.ui.rememberNow
 import com.tritv.iptv.ui.rememberNumberEntry
 import com.tritv.iptv.ui.tabular
@@ -497,59 +501,71 @@ fun PlayerScreen(
                     )
                     // The guide makes way for an error, which then gets the full width.
                     val showGuide = (current != null || next != null) && error == null
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = if (showGuide) Modifier.width(300.dp) else Modifier.weight(1f),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(channel.name, style = TriTvType.Tagline, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                            if (isFavorite) StarIcon(16.dp)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            val err = error
-                            if (err != null) {
-                                Text(err, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            } else {
-                                channel.group?.let { GroupCaption(it, TriTvType.Caption, TriTvColors.TextMuted) }
-                                if (lines.size > 1) {
-                                    if (channel.group != null) Dot()
-                                    Text(
-                                        "线路 ${attempt.sourceIndex + 1}/${lines.size}",
-                                        style = TriTvType.Caption,
-                                        color = TriTvColors.TextMuted,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                    )
-                                    // How fast this line answered its last probes.
-                                    lineStat?.takeIf { !it.failing }?.latencyMs?.let { ms ->
-                                        Dot()
-                                        Text("$ms ms", style = TriTvType.Caption.tabular(), color = TriTvColors.TextMuted, maxLines = 1, softWrap = false)
-                                    }
-                                }
-                                // Buffering is shown by the ring in the middle of the picture, not here.
-                                if (noAudio && !buffering) {
-                                    Dot()
-                                    Text(
-                                        "无声音：音频格式不支持",
-                                        style = TriTvType.Caption,
-                                        color = TriTvColors.Error,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false),
-                                    )
-                                }
-                            }
-                        }
+                    // The logo stands in for the name, as on the channel list; text until one loads.
+                    val logo = rememberLogo(channel.logos)
+                    if (logo != null) {
+                        ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
+                    } else {
+                        Text(
+                            ChannelCategory.label(channel.name),
+                            style = TriTvType.Tagline,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = if (showGuide) Modifier.width(240.dp) else Modifier.weight(1f),
+                        )
                     }
                     if (showGuide) {
                         NowAndNext(current, next, now, Modifier.weight(1f))
+                    } else if (logo != null) {
+                        Spacer(Modifier.weight(1f))
                     }
                 }
+                // Status on the left (favourite, group, line, problems), key hints on the right.
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (isFavorite) StarIcon(14.dp)
+                        val err = error
+                        if (err != null) {
+                            Text(err, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        } else {
+                            channel.group?.let { GroupCaption(it, TriTvType.Caption, TriTvColors.TextMuted) }
+                            if (lines.size > 1) {
+                                if (channel.group != null) Dot()
+                                Text(
+                                    "线路 ${attempt.sourceIndex + 1}/${lines.size}",
+                                    style = TriTvType.Caption,
+                                    color = TriTvColors.TextMuted,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                                // How fast this line answered its last probes.
+                                lineStat?.takeIf { !it.failing }?.latencyMs?.let { ms ->
+                                    Dot()
+                                    Text("$ms ms", style = TriTvType.Caption.tabular(), color = TriTvColors.TextMuted, maxLines = 1, softWrap = false)
+                                }
+                            }
+                            // Buffering is shown by the ring in the middle of the picture, not here.
+                            if (noAudio && !buffering) {
+                                Dot()
+                                Text(
+                                    "无声音：音频格式不支持",
+                                    style = TriTvType.Caption,
+                                    color = TriTvColors.Error,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                            }
+                        }
+                    }
                     KeyHint("▲▼", "换台")
                     KeyHint("◀▶", "换线路")
                     KeyHint("OK", "信息")

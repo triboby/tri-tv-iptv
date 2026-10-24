@@ -22,7 +22,7 @@ object ChannelMerger {
             Channel(
                 name = first.name,
                 group = first.group,
-                logo = sources.firstNotNullOfOrNull { it.logo },
+                logos = sources.mapNotNull { it.logo }.distinct(),
                 sources = sources,
             )
         }
