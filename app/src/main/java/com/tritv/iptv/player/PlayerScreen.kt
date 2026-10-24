@@ -550,18 +550,16 @@ fun PlayerScreen(
                     .padding(start = ScreenMargin, end = ScreenMargin, top = 18.dp, bottom = 14.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Text(
-                        "%03d".format(channelNumber),
-                        style = TriTvType.PlayerNumber.tabular(),
-                        modifier = Modifier.width(88.dp),
-                    )
                     // The guide makes way for an error, which then gets the full width.
                     val showGuide = (current != null || next != null) && error == null
                     // The logo stands in for the name, as on the channel list; text until one loads.
                     val logo = rememberLogo(channel.logos)
-                    if (logo != null) {
-                        ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
-                    } else {
+                    // Number and logo as one unit, as in the corner card: the logo 8dp after the digits.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("%03d".format(channelNumber), style = TriTvType.PlayerNumber.tabular())
+                        if (logo != null) ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
+                    }
+                    if (logo == null) {
                         Text(
                             ChannelCategory.label(channel.name),
                             style = TriTvType.Tagline,
