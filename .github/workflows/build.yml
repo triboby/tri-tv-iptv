@@ -22,11 +22,11 @@ jobs:
         run: ./gradlew --no-daemon testDebugUnitTest assembleDebug assembleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: tritv-debug-apk
+          name: tri-iptv-debug-apk
           path: app/build/outputs/apk/debug/*.apk
       # The one to install on a TV: R8-optimised and not debuggable. Same key, so it installs
       # over a debug build without losing the saved playlist.
       - uses: actions/upload-artifact@v4
         with:
-          name: tritv-release-apk
+          name: tri-iptv-release-apk
           path: app/build/outputs/apk/release/*.apk

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Tri TV mark: three stacked rounded play triangles (teal, violet, blue), smaller layers behind and to the left.
+<!-- tri.iptv mark: three stacked rounded play triangles (teal, violet, blue), smaller layers behind and to the left.
      Golden-ratio construction: apex at H*phi/2, corner radius H/phi^4, layers shrink by phi^-1/5. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
