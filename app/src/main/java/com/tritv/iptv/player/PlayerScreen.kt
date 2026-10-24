@@ -666,11 +666,11 @@ private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, is
 
 /** 28sp semibold: the number and name on the drawer card. */
 /**
- * First line of a corner card: the number, then the logo (or the name until one loads). With
- * [caret] a blue bar follows the number as it is typed; with no [channel] the number leads nowhere.
+ * First line of a corner card: the number, then the logo (or the name until one loads); with no
+ * [channel] the number leads nowhere.
  */
 @Composable
-private fun CardHeader(number: String, channel: Channel?, caret: Boolean = false) {
+private fun CardHeader(number: String, channel: Channel?) {
     val logo = channel?.let { rememberLogo(it.logos) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -678,10 +678,7 @@ private fun CardHeader(number: String, channel: Channel?, caret: Boolean = false
         horizontalArrangement = Arrangement.spacedBy(if (logo != null) 8.dp else 12.dp),
         modifier = Modifier.height(44.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(number, style = CardTitle.tabular())
-            if (caret) Box(Modifier.size(width = 2.dp, height = 28.dp).background(TriTvColors.SkyBlue))
-        }
+        Text(number, style = CardTitle.tabular())
         if (channel == null) {
             Text("没有这个频道", style = CardTitle, color = TriTvColors.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
         } else {
@@ -709,7 +706,7 @@ private fun JumpCard(number: String, typing: Boolean, channel: Channel?, program
             .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Card)
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        CardHeader(number, channel, caret = typing)
+        CardHeader(number, channel)
         programmes.nowAndNext(now).first?.let { current ->
             Text(
                 "正在播 · ${current.title}",
