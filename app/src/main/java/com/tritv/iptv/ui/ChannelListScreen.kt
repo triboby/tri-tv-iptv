@@ -818,7 +818,7 @@ private fun LoadingStatus() {
         }
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Spinner(size = 14.dp, stroke = 2.dp, trackColor = Color(0x29FFFFFF))
+        Spinner(size = 14.dp, stroke = 1.5.dp, trackColor = Color(0x29FFFFFF))
         Text(
             if (waited >= 3) "仍在加载 · 已等待 $waited 秒" else "正在加载频道…",
             style = TriTvType.Caption.tabular(),

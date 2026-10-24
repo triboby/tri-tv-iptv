@@ -259,7 +259,7 @@ private enum class PillLabel { Idle, Busy, Done }
 fun CheckIcon(size: Dp = 16.dp, color: Color = TriTvColors.SkyBlue) {
     Canvas(Modifier.size(size)) {
         val w = this.size.width
-        val stroke = 2.dp.toPx()
+        val stroke = 2.5.dp.toPx()
         drawLine(color, Offset(w * 0.12f, w * 0.52f), Offset(w * 0.4f, w * 0.8f), stroke, StrokeCap.Round)
         drawLine(color, Offset(w * 0.4f, w * 0.8f), Offset(w * 0.9f, w * 0.25f), stroke, StrokeCap.Round)
     }
@@ -473,7 +473,7 @@ fun Dot(color: Color = TriTvColors.TextMuted) {
 @Composable
 fun Spinner(
     size: Dp = 40.dp,
-    stroke: Dp = 4.dp,
+    stroke: Dp = 3.dp,
     color: Color = TriTvColors.SkyBlue,
     trackColor: Color = Color(0x24FFFFFF),
     modifier: Modifier = Modifier,
