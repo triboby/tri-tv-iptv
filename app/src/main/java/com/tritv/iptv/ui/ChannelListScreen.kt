@@ -24,9 +24,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -141,8 +143,10 @@ fun ChannelListScreen(
     // Group chip with focus, shown once focus rests on it for GROUP_FOCUS_DELAY_MS.
     var focusedGroup by remember { mutableStateOf<GroupChoice?>(null) }
     val selectedGroupRequester = remember { FocusRequester() }
-    // The first entry at the foot of the rail, which Down from the last group goes to.
+    // Ends of the rail, for moving between the groups and the entries at its foot and for wrapping round.
+    val firstGroupRequester = remember { FocusRequester() }
     val railActionsRequester = remember { FocusRequester() }
+    val lastActionRequester = remember { FocusRequester() }
 
     LaunchedEffect(focusedGroup) {
         val choice = focusedGroup ?: return@LaunchedEffect
@@ -237,7 +241,7 @@ fun ChannelListScreen(
                         }
                     }
                     Spacer(Modifier.height(6.dp))
-                    val groupChip: @Composable (GroupChoice, GroupLabel, Int, Int, Boolean) -> Unit = { choice, label, count, order, last ->
+                    val groupChip: @Composable (GroupChoice, GroupLabel, Int, Int, Boolean, Boolean) -> Unit = { choice, label, count, order, first, last ->
                         val selected = if (choice.favorites) state.favoritesSelected
                         else !state.favoritesSelected && state.selectedGroup == choice.group
                         GroupChip(
@@ -256,33 +260,35 @@ fun ChannelListScreen(
                                 .arrive(order, entrance)
                                 .onFocusChanged { if (it.isFocused) focusedGroup = choice else if (focusedGroup == choice) focusedGroup = null }
                                 .then(if (selected) Modifier.focusRequester(selectedGroupRequester) else Modifier)
-                                // The lazy column does not hand Down on to the entries below it by itself.
-                                .then(if (last) Modifier.focusProperties { down = railActionsRequester } else Modifier),
+                                .then(if (first) Modifier.focusRequester(firstGroupRequester).jumpFocusOn(Key.DirectionUp, lastActionRequester) else Modifier)
+                                .then(if (last) Modifier.jumpFocusOn(Key.DirectionDown, railActionsRequester) else Modifier),
                         )
                     }
-                    // Scrolls when there are more groups than fit.
-                    LazyColumn(
+                    // A plain scrolling column rather than a lazy one: there are few groups, every chip stays
+                    // composed so the ends can always take focus, and Down leaves it like any other column.
+                    Column(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
                     ) {
-                        if (state.favorites.isNotEmpty()) {
-                            item(key = "__favorites__") {
-                                groupChip(GroupChoice(favorites = true), FAVORITES_LABEL, state.favorites.size, 1, false)
+                        val hasFavorites = state.favorites.isNotEmpty()
+                        if (hasFavorites) {
+                            groupChip(GroupChoice(favorites = true), FAVORITES_LABEL, state.favorites.size, 1, true, false)
+                        }
+                        groupChip(GroupChoice(group = null), ALL_LABEL, state.channels.size, 2, !hasFavorites, state.groups.isEmpty())
+                        state.groups.forEachIndexed { i, group ->
+                            key(group) {
+                                groupChip(
+                                    GroupChoice(group = group),
+                                    remember(group) { groupLabel(group) },
+                                    state.channels.count { it.group == group },
+                                    3 + i,
+                                    false,
+                                    i == state.groups.lastIndex,
+                                )
                             }
-                        }
-                        item(key = "__all__") {
-                            groupChip(GroupChoice(group = null), ALL_LABEL, state.channels.size, 2, state.groups.isEmpty())
-                        }
-                        itemsIndexed(state.groups, key = { _, group -> group }) { i, group ->
-                            groupChip(
-                                GroupChoice(group = group),
-                                remember(group) { groupLabel(group) },
-                                state.channels.count { it.group == group },
-                                3 + i,
-                                i == state.groups.lastIndex,
-                            )
                         }
                     }
                     val hasGuide = state.programmes.isNotEmpty()
@@ -299,7 +305,10 @@ fun ChannelListScreen(
                         "直播源",
                         expanded = groupsFocused,
                         onClick = onOpenSettings,
-                        modifier = if (hasGuide) Modifier else Modifier.focusRequester(railActionsRequester),
+                        modifier = Modifier
+                            .then(if (hasGuide) Modifier else Modifier.focusRequester(railActionsRequester))
+                            .focusRequester(lastActionRequester)
+                            .jumpFocusOn(Key.DirectionDown, firstGroupRequester),
                     ) { RssIcon() }
                 }
 
@@ -424,6 +433,13 @@ private fun Modifier.arrive(order: Int, play: Boolean): Modifier {
         alpha = progress.value
         translationY = (1f - progress.value) * 8.dp.toPx()
     }
+}
+
+/** [key] on this element moves focus straight to [target] instead of searching for the nearest element. */
+private fun Modifier.jumpFocusOn(key: Key, target: FocusRequester): Modifier = onPreviewKeyEvent { event ->
+    if (event.key != key) return@onPreviewKeyEvent false
+    if (event.type == KeyEventType.KeyDown) runCatching { target.requestFocus() }
+    true
 }
 
 /** How long focus rests on a group before the list shows it, so moving through groups stays quick. */
