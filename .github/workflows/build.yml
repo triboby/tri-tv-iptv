@@ -1,8 +1,12 @@
 name: Build
 
 on:
+  # Branches with a pull request are built by the pull_request event; building their pushes
+  # too ran every commit twice.
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:

@@ -6,18 +6,19 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import android.util.LruCache
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtMost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -170,7 +171,7 @@ object LogoCache {
         var bottom = -1
         for (y in 0 until h) {
             for (x in 0 until w) {
-                if (pixels[y * w + x] ushr 24 > 16) {
+                if (pixels[y * w + x] ushr 24 > 24) {
                     if (x < left) left = x
                     if (x > right) right = x
                     if (y < top) top = y
@@ -203,10 +204,14 @@ fun rememberLogo(urls: List<String>): ImageBitmap? {
  */
 @Composable
 fun ChannelLogo(logo: ImageBitmap, description: String, height: Dp, maxWidth: Dp, modifier: Modifier = Modifier) {
+    // Sized from the logo's own shape: left to its pixel size, the box could be wider than the
+    // scaled artwork and centre it, leaving a gap on both sides.
+    val width = (height * (logo.width.toFloat() / logo.height)).coerceAtMost(maxWidth)
     Image(
         bitmap = logo,
         contentDescription = description,
         contentScale = ContentScale.Fit,
-        modifier = modifier.height(height).widthIn(max = maxWidth),
+        alignment = Alignment.CenterStart,
+        modifier = modifier.size(width = width, height = height),
     )
 }

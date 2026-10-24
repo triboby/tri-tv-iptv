@@ -64,7 +64,7 @@ import java.util.Locale
 /** The four corner radii in the system: small utility, list row, card, pill. */
 object Radius {
     val Small = RoundedCornerShape(8.dp)
-    val Row = RoundedCornerShape(11.dp)
+    val Row = RoundedCornerShape(12.dp)
     val Card = RoundedCornerShape(18.dp)
     val Pill = RoundedCornerShape(percent = 50)
 }
@@ -119,7 +119,7 @@ fun IconSlot(icon: String?, slot: Dp, fontSize: TextUnit) {
 fun GroupCaption(group: String, style: TextStyle, color: Color) {
     val label = remember(group) { groupLabel(group) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (label.icon != null) IconSlot(label.icon, 16.dp, 13.sp)
+        if (label.icon != null) IconSlot(label.icon, 16.dp, 14.sp)
         Text(label.name, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -456,7 +456,7 @@ fun KeyCap(label: String) {
             .background(Color(0x2ED2D2D7), Radius.Small)
             .padding(horizontal = 6.dp),
     ) {
-        Text(label, style = TriTvType.Small.copy(fontSize = 11.sp, lineHeight = 11.sp))
+        Text(label, style = TriTvType.Small.copy(fontSize = 12.sp, lineHeight = 12.sp))
     }
 }
 
