@@ -643,7 +643,7 @@ private fun NowPlayingMark(color: Color) {
 }
 
 /**
- * 40dp chip for a group, 10dp in from both sides, with the channel rows' 11dp corners. Collapsed it is a square with the group's emoji
+ * 40dp chip for a group, 10dp in from both sides, with the channel rows' 12dp corners. Collapsed it is a square with the group's emoji
  * (or the first character of its name); expanded the name and count follow after a 10dp gap.
  */
 @Composable

@@ -64,7 +64,7 @@ import java.util.Locale
 /** The four corner radii in the system: small utility, list row, card, pill. */
 object Radius {
     val Small = RoundedCornerShape(8.dp)
-    val Row = RoundedCornerShape(11.dp)
+    val Row = RoundedCornerShape(12.dp)
     val Card = RoundedCornerShape(18.dp)
     val Pill = RoundedCornerShape(percent = 50)
 }
