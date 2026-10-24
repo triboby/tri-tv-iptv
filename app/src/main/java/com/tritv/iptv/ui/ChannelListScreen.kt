@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,7 +49,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -59,7 +57,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Text
-import com.tritv.iptv.R
 import com.tritv.iptv.UiState
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.nowAndNext
@@ -229,17 +226,6 @@ fun ChannelListScreen(
                         // to the selected group; Left from the list does that instead.
                         .onFocusChanged { groupsFocused = it.hasFocus },
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.height(40.dp),
-                    ) {
-                        AppMark()
-                        if (groupsFocused) {
-                            Text("直播", style = TriTvType.Tagline.copy(lineHeight = 24.sp), maxLines = 1, softWrap = false)
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
                     val groupChip: @Composable (GroupChoice, GroupLabel, Int, Int, Boolean, Boolean) -> Unit = { choice, label, count, order, first, last ->
                         val selected = if (choice.favorites) state.favoritesSelected
                         else !state.favoritesSelected && state.selectedGroup == choice.group
@@ -400,15 +386,6 @@ fun ChannelListScreen(
             onDismiss = { menuFor = null },
         )
     }
-}
-
-/**
- * The launcher icon itself, tile and all, 40dp at the top of the group rail. The bare mark used in
- * title bars would melt into the picture behind the drawer; the dark tile keeps it legible.
- */
-@Composable
-private fun AppMark() {
-    Image(painterResource(R.drawable.app_mark), contentDescription = null, modifier = Modifier.size(40.dp))
 }
 
 /** How long focus rests on a channel before it plays behind the drawer, so moving through the list stays quick. */
@@ -797,8 +774,6 @@ private fun DrawerSkeleton() {
             .padding(DrawerPadding),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.width(RailCollapsed)) {
-            AppMark()
-            Spacer(Modifier.height(6.dp))
             repeat(5) { Box(Modifier.size(40.dp).background(faint, Radius.Row)) }
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.width(DrawerListWidth)) {
