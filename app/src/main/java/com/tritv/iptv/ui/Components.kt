@@ -90,7 +90,7 @@ private val logoLayers = listOf(
     Triple(0f, 1f, listOf(Color(0xFF5AB8FF), Color(0xFF1F6FFF))),
 )
 
-/** The Tri TV mark: three stacked play triangles, as in the launcher icon. */
+/** The tri.iptv mark: three stacked play triangles, as in the launcher icon. */
 @Composable
 fun LogoMark(size: Dp, modifier: Modifier = Modifier) {
     // Offscreen so the gap around each front layer can be cut out of the layers behind it.

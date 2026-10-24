@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TriTV"
+rootProject.name = "tri-iptv"
 include(":app")

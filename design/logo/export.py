@@ -21,7 +21,7 @@ mh = 72 / PHI ** 2
 L, sc, tx, ty, bb, ox_mid = place(mh, 54, 54)
 gap = 4 * mh / 92
 x = ['<?xml version="1.0" encoding="utf-8"?>',
-     '<!-- Tri TV mark: three stacked rounded play triangles (teal, violet, blue), smaller layers behind and to the left.',
+     '<!-- tri.iptv mark: three stacked rounded play triangles (teal, violet, blue), smaller layers behind and to the left.',
      '     Golden-ratio construction: apex at H*phi/2, corner radius H/phi^4, layers shrink by phi^-1/5. -->',
      '<vector xmlns:android="http://schemas.android.com/apk/res/android"',
      '    xmlns:aapt="http://schemas.android.com/aapt"',
@@ -43,7 +43,7 @@ for i, (s, lx) in enumerate(L):
 x += ['    </group>', '</vector>', '']
 open(f'{REPO}/app/src/main/res/drawable-v26/ic_launcher_foreground.xml', 'w').write('\n'.join(x))
 open(f'{REPO}/app/src/main/res/drawable-v26/ic_launcher_background.xml', 'w').write('''<?xml version="1.0" encoding="utf-8"?>
-<!-- Tri TV launcher background: dark navy diagonal gradient. -->
+<!-- tri.iptv launcher background: dark navy diagonal gradient. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
