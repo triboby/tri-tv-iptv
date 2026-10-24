@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -140,6 +141,8 @@ fun ChannelListScreen(
     // Group chip with focus, shown once focus rests on it for GROUP_FOCUS_DELAY_MS.
     var focusedGroup by remember { mutableStateOf<GroupChoice?>(null) }
     val selectedGroupRequester = remember { FocusRequester() }
+    // The first entry at the foot of the rail, which Down from the last group goes to.
+    val railActionsRequester = remember { FocusRequester() }
 
     LaunchedEffect(focusedGroup) {
         val choice = focusedGroup ?: return@LaunchedEffect
@@ -234,7 +237,7 @@ fun ChannelListScreen(
                         }
                     }
                     Spacer(Modifier.height(6.dp))
-                    val groupChip: @Composable (GroupChoice, GroupLabel, Int, Int) -> Unit = { choice, label, count, order ->
+                    val groupChip: @Composable (GroupChoice, GroupLabel, Int, Int, Boolean) -> Unit = { choice, label, count, order, last ->
                         val selected = if (choice.favorites) state.favoritesSelected
                         else !state.favoritesSelected && state.selectedGroup == choice.group
                         GroupChip(
@@ -252,7 +255,9 @@ fun ChannelListScreen(
                             modifier = Modifier
                                 .arrive(order, entrance)
                                 .onFocusChanged { if (it.isFocused) focusedGroup = choice else if (focusedGroup == choice) focusedGroup = null }
-                                .then(if (selected) Modifier.focusRequester(selectedGroupRequester) else Modifier),
+                                .then(if (selected) Modifier.focusRequester(selectedGroupRequester) else Modifier)
+                                // The lazy column does not hand Down on to the entries below it by itself.
+                                .then(if (last) Modifier.focusProperties { down = railActionsRequester } else Modifier),
                         )
                     }
                     // Scrolls when there are more groups than fit.
@@ -264,11 +269,11 @@ fun ChannelListScreen(
                     ) {
                         if (state.favorites.isNotEmpty()) {
                             item(key = "__favorites__") {
-                                groupChip(GroupChoice(favorites = true), FAVORITES_LABEL, state.favorites.size, 1)
+                                groupChip(GroupChoice(favorites = true), FAVORITES_LABEL, state.favorites.size, 1, false)
                             }
                         }
                         item(key = "__all__") {
-                            groupChip(GroupChoice(group = null), ALL_LABEL, state.channels.size, 2)
+                            groupChip(GroupChoice(group = null), ALL_LABEL, state.channels.size, 2, state.groups.isEmpty())
                         }
                         itemsIndexed(state.groups, key = { _, group -> group }) { i, group ->
                             groupChip(
@@ -276,13 +281,26 @@ fun ChannelListScreen(
                                 remember(group) { groupLabel(group) },
                                 state.channels.count { it.group == group },
                                 3 + i,
+                                i == state.groups.lastIndex,
                             )
                         }
                     }
-                    if (state.programmes.isNotEmpty()) {
-                        RailAction("节目表", expanded = groupsFocused, onClick = onOpenGuide, key = "≡") { GuideIcon() }
+                    val hasGuide = state.programmes.isNotEmpty()
+                    if (hasGuide) {
+                        RailAction(
+                            "节目表",
+                            expanded = groupsFocused,
+                            onClick = onOpenGuide,
+                            key = "≡",
+                            modifier = Modifier.focusRequester(railActionsRequester),
+                        ) { GuideIcon() }
                     }
-                    RailAction("直播源", expanded = groupsFocused, onClick = onOpenSettings) { RssIcon() }
+                    RailAction(
+                        "直播源",
+                        expanded = groupsFocused,
+                        onClick = onOpenSettings,
+                        modifier = if (hasGuide) Modifier else Modifier.focusRequester(railActionsRequester),
+                    ) { RssIcon() }
                 }
 
                 Column(
@@ -719,6 +737,7 @@ private fun RailAction(
     expanded: Boolean,
     onClick: () -> Unit,
     key: String? = null,
+    modifier: Modifier = Modifier,
     icon: @Composable () -> Unit,
 ) {
     FocusRow(
@@ -726,7 +745,7 @@ private fun RailAction(
         shape = Radius.Row,
         contentPadding = PaddingValues(horizontal = 10.dp),
         gap = 10.dp,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(40.dp),
     ) {
