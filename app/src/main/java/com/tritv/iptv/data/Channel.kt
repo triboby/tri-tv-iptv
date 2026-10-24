@@ -8,11 +8,12 @@ data class Channel(
     val logos: List<String>,
     val sources: List<PlaylistEntry>,
 ) {
+    // Both are worked out once: the list, favourites and guide look them up for every row on every
+    // frame they recompose, and each takes a regex over the name.
+
     /** Identity that survives playlist reloads: tvg-id, else the normalized name. */
-    val stableKey: String
-        get() = ChannelMerger.keyOf(sources.first())
+    val stableKey: String by lazy { ChannelMerger.keyOf(sources.first()) }
 
     /** What kind of channel this is ("科教" for CCTV-10), for names that don't say so themselves. */
-    val category: String?
-        get() = ChannelCategory.of(name)
+    val category: String? by lazy { ChannelCategory.of(name) }
 }

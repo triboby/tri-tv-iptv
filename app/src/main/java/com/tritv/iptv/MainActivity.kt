@@ -8,8 +8,13 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import com.tritv.iptv.player.PlayerScreen
 import com.tritv.iptv.ui.ChannelListScreen
 import com.tritv.iptv.ui.rememberNumberEntry
@@ -23,6 +28,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Background work (line sweep, guide refresh) pauses while the app is off screen.
+        lifecycle.addObserver(
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> viewModel.onForeground(true)
+                    Lifecycle.Event.ON_STOP -> viewModel.onForeground(false)
+                    else -> {}
+                }
+            },
+        )
         setContent {
             TriTvTheme {
                 val state by viewModel.state.collectAsStateWithLifecycle()
@@ -47,10 +62,20 @@ class MainActivity : ComponentActivity() {
                         val playing = state.playingIndex
                         if (playing != null && playing in state.channels.indices) {
                             val channel = state.channels[playing]
-                            val lineStats by viewModel.lineStats.collectAsStateWithLifecycle()
+                            val lines = state.playingLines.ifEmpty { channel.sources }
+                            // Only this channel's lines: a sweep records ~200 results, and each would
+                            // otherwise recompose the whole player.
+                            val lineStatsFlow = remember(lines) {
+                                val urls = lines.map { it.url }
+                                viewModel.lineStats.map { all -> urls.mapNotNull { u -> all[u]?.let { u to it } }.toMap() }
+                                    .distinctUntilChanged()
+                            }
+                            val lineStats by lineStatsFlow.collectAsStateWithLifecycle(
+                                initialValue = remember(lines) { lines.mapNotNull { l -> viewModel.lineStats.value[l.url]?.let { l.url to it } }.toMap() },
+                            )
                             PlayerScreen(
                                 channel = channel,
-                                lines = state.playingLines.ifEmpty { channel.sources },
+                                lines = lines,
                                 lineStats = lineStats,
                                 onLineResult = viewModel::reportLine,
                                 onLinePicked = viewModel::pickLine,

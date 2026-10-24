@@ -37,4 +37,10 @@ class LineProbeTest {
         assertTrue(LineProbe.isPlaylist("\n #EXTM3U"))
         assertFalse(LineProbe.isPlaylist("<html>"))
     }
+
+    @Test
+    fun tellsMasterFromMediaPlaylist() {
+        assertTrue(LineProbe.isMaster("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhd.m3u8\n"))
+        assertFalse(LineProbe.isMaster("#EXTM3U\n#EXTINF:6,\nseg1.ts\n"))
+    }
 }

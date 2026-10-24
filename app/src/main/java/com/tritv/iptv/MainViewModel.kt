@@ -7,20 +7,27 @@ import com.tritv.iptv.data.Channel
 import com.tritv.iptv.data.FavoriteList
 import com.tritv.iptv.data.LineRepository
 import com.tritv.iptv.data.LineStat
+import com.tritv.iptv.data.Playlist
 import com.tritv.iptv.data.PlaylistEntry
 import com.tritv.iptv.data.PlaylistRepository
 import com.tritv.iptv.data.guideErrorMessage
 import com.tritv.iptv.data.loadErrorMessage
+import com.tritv.iptv.epg.GuideData
 import com.tritv.iptv.epg.GuideRepository
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.resolveGuideUrl
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** State of the programme guide for the source page's status card. */
 data class GuideStatus(
@@ -110,70 +117,86 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Favourites as they were when moving started, restored if the move is cancelled. */
     private var favoritesBeforeMove: List<String>? = null
 
+    /** Counts [loadPlaylist] calls, so a refresh can tell it has been overtaken. */
+    private var loadSeq = 0
+
+    /** Whether the app is on screen; background work waits while it is not. */
+    private val foreground = MutableStateFlow(false)
+
+    /** Set once a line has started playing, after which start-up is over for background work. */
+    private val playedOnce = MutableStateFlow(false)
+
     private val _state = MutableStateFlow(
         UiState(
             playlistUrl = repo.savedUrl.orEmpty(),
             guideUrl = repo.guideUrl.orEmpty(),
             favorites = repo.favorites,
             showSettings = repo.savedUrl.isNullOrBlank(),
+            // The skeleton, not "no channels", until the cached or downloaded list is in.
+            loading = !repo.savedUrl.isNullOrBlank(),
         ),
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
-        if (_state.value.playlistUrl.isNotBlank()) loadPlaylist(_state.value.playlistUrl)
+        val url = _state.value.playlistUrl.trim()
+        if (url.isNotBlank()) {
+            viewModelScope.launch {
+                // The last copy plays at once; the fresh one replaces it quietly if it differs.
+                val cached = withContext(Dispatchers.IO) { repo.cached(url) }?.takeIf { it.channels.isNotEmpty() }
+                if (cached != null) {
+                    playlistGuideUrl = cached.guideUrl
+                    showPlaylist(cached.channels, guideChanged = false, loadedAt = cached.cachedAt ?: System.currentTimeMillis())
+                }
+                loadPlaylist(url, quiet = cached != null)
+            }
+        }
+    }
+
+    /** Called as the app comes on screen (true) and leaves it (false), e.g. with Home or standby. */
+    fun onForeground(visible: Boolean) {
+        foreground.value = visible
+        if (!visible) lines.save()
+    }
+
+    override fun onCleared() {
+        lines.save()
+    }
+
+    /**
+     * Returns once the first channel has started playing, or after [STARTUP_GRACE_MS], so the
+     * guide and the line sweep do not take CPU and network from it while it connects.
+     */
+    private suspend fun startupSettled() {
+        withTimeoutOrNull(STARTUP_GRACE_MS) { playedOnce.first { it } }
     }
 
     fun onUrlChange(url: String) = _state.update { it.copy(playlistUrl = url) }
 
     fun onGuideUrlChange(url: String) = _state.update { it.copy(guideUrl = url) }
 
-    fun loadPlaylist(url: String = _state.value.playlistUrl) {
+    /**
+     * Downloads the playlist and shows it. [quiet] is the refresh behind a cached copy already on
+     * screen: no loading state, failures are ignored, and the list is only touched if it changed.
+     */
+    fun loadPlaylist(url: String = _state.value.playlistUrl, quiet: Boolean = false) {
         val trimmed = url.trim()
         if (trimmed.isEmpty()) return
         val guideChanged = _state.value.guideUrl.trim() != repo.guideUrl.orEmpty()
         repo.guideUrl = _state.value.guideUrl.trim().ifEmpty { null }
-        _state.update { it.copy(loading = true, imported = false, error = null) }
+        if (!quiet) _state.update { it.copy(loading = true, imported = false, error = null) }
+        val seq = ++loadSeq
         viewModelScope.launch {
             runCatching { repo.load(trimmed) }
                 .onSuccess { playlist ->
-                    val channels = playlist.channels
+                    // A quiet refresh that finishes after the viewer imported something else is stale.
+                    if (quiet && seq != loadSeq) return@onSuccess
                     repo.savedUrl = trimmed
                     playlistGuideUrl = playlist.guideUrl
-                    val last = channels.indexOfFirst { it.stableKey == repo.lastChannelKey }.coerceAtLeast(0)
-                    // The last channel plays behind the drawer from the start.
-                    val playing = last.takeIf { channels.isNotEmpty() }
-                    val fromSourcePage = _state.value.showSettings && channels.isNotEmpty()
-                    _state.update {
-                        it.copy(
-                            loading = false,
-                            channels = channels,
-                            groups = channels.mapNotNull { c -> c.group }.distinct(),
-                            selectedGroup = null,
-                            favoritesSelected = false,
-                            movingFavorite = null,
-                            focusIndex = last,
-                            playingIndex = playing,
-                            playingLines = playing?.let { i -> lines.ordered(channels[i]) }.orEmpty(),
-                            listOpen = true,
-                            error = if (channels.isEmpty()) "播放列表中没有频道" else null,
-                            loadedAt = System.currentTimeMillis(),
-                            // Back to the list once there is something to show, after "已导入" has been seen.
-                            showSettings = it.showSettings,
-                            imported = fromSourcePage,
-                        )
-                    }
-                    if (fromSourcePage) {
-                        viewModelScope.launch {
-                            delay(IMPORTED_NOTE_MS)
-                            _state.update { if (it.imported) it.copy(showSettings = false, imported = false) else it }
-                        }
-                    }
-                    refreshGuide(force = guideChanged)
-                    lines.prune(channels)
-                    startLineSweep()
+                    if (quiet) refreshPlaylist(playlist) else showPlaylist(playlist.channels, guideChanged, System.currentTimeMillis())
                 }
                 .onFailure { e ->
+                    if (quiet) return@onFailure
                     _state.update {
                         it.copy(
                             loading = false,
@@ -184,6 +207,75 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
         }
+    }
+
+    /** Shows [channels] afresh: all channels, the last one watched playing behind the open drawer. */
+    private fun showPlaylist(channels: List<Channel>, guideChanged: Boolean, loadedAt: Long) {
+        val last = channels.indexOfFirst { it.stableKey == repo.lastChannelKey }.coerceAtLeast(0)
+        // The last channel plays behind the drawer from the start.
+        val playing = last.takeIf { channels.isNotEmpty() }
+        val fromSourcePage = _state.value.showSettings && channels.isNotEmpty()
+        _state.update {
+            it.copy(
+                loading = false,
+                channels = channels,
+                groups = channels.mapNotNull { c -> c.group }.distinct(),
+                selectedGroup = null,
+                favoritesSelected = false,
+                movingFavorite = null,
+                focusIndex = last,
+                playingIndex = playing,
+                playingLines = playing?.let { i -> lines.ordered(channels[i]) }.orEmpty(),
+                listOpen = true,
+                error = if (channels.isEmpty()) "播放列表中没有频道" else null,
+                loadedAt = loadedAt,
+                // Back to the list once there is something to show, after "已导入" has been seen.
+                showSettings = it.showSettings,
+                imported = fromSourcePage,
+            )
+        }
+        if (fromSourcePage) {
+            viewModelScope.launch {
+                delay(IMPORTED_NOTE_MS)
+                _state.update { if (it.imported) it.copy(showSettings = false, imported = false) else it }
+            }
+        }
+        refreshGuide(force = guideChanged)
+        lines.prune(channels)
+        startLineSweep()
+    }
+
+    /**
+     * Swaps in a freshly downloaded [playlist] behind the cached one on screen, keeping the channel
+     * playing and the one focused where they still exist. Nothing happens when it is the same.
+     */
+    private fun refreshPlaylist(playlist: Playlist) {
+        val s = _state.value
+        val channels = playlist.channels
+        if (channels.isEmpty() || channels == s.channels) {
+            if (playlist.cachedAt == null) _state.update { it.copy(loadedAt = System.currentTimeMillis()) }
+            return
+        }
+        fun indexOf(key: String?) = key?.let { k -> channels.indexOfFirst { it.stableKey == k }.takeIf { it >= 0 } }
+        val oldPlaying = s.playingIndex?.let { s.channels.getOrNull(it) }
+        val playing = indexOf(oldPlaying?.stableKey) ?: 0
+        val focus = indexOf(s.channels.getOrNull(s.focusIndex)?.stableKey) ?: playing
+        _state.update {
+            it.copy(
+                channels = channels,
+                groups = channels.mapNotNull { c -> c.group }.distinct(),
+                selectedGroup = it.selectedGroup?.takeIf { g -> channels.any { c -> c.group == g } },
+                movingFavorite = null,
+                focusIndex = focus,
+                playingIndex = playing,
+                // The same channel keeps its lines, so the player does not restart.
+                playingLines = if (channels[playing] == oldPlaying) it.playingLines else lines.ordered(channels[playing]),
+                loadedAt = playlist.cachedAt ?: System.currentTimeMillis(),
+            )
+        }
+        refreshGuide()
+        lines.prune(channels)
+        startLineSweep()
     }
 
     /**
@@ -208,30 +300,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(guideStatus = (it.guideStatus ?: GuideStatus()).copy(loading = true, error = null, fromPlaylist = own == null, url = url))
         }
         guideJob = viewModelScope.launch {
+            fun show(data: GuideData) = _state.update {
+                it.copy(
+                    programmes = data.programmes,
+                    guideStatus = GuideStatus(
+                        downloadedAt = data.downloadedAt,
+                        matched = channels.count { c -> c.stableKey in data.programmes },
+                        total = channels.size,
+                        fromPlaylist = own == null,
+                        url = url,
+                    ),
+                )
+            }
             var forceNext = force
-            while (true) {
-                runCatching { guideRepo.load(url, channels, forceNext) }
-                    .onSuccess { data ->
-                        _state.update {
-                            it.copy(
-                                programmes = data.programmes,
-                                guideStatus = GuideStatus(
-                                    downloadedAt = data.downloadedAt,
-                                    matched = channels.count { c -> c.stableKey in data.programmes },
-                                    total = channels.size,
-                                    fromPlaylist = own == null,
-                                    url = url,
-                                ),
-                            )
+            // When what is shown should be fetched again; null until the first load.
+            var dueAt: Long? = null
+            // What the last start parsed shows at once; only fetching and parsing anew waits.
+            if (!force) {
+                guideRepo.cached(url, channels)?.let { data ->
+                    show(data)
+                    dueAt = data.downloadedAt + GuideRepository.MAX_AGE_MS
+                }
+            }
+            startupSettled()
+            // Waits while the app is off screen; a refresh missed then runs on return.
+            foreground.collectLatest { visible ->
+                if (!visible) return@collectLatest
+                while (true) {
+                    dueAt?.let { delay(it - System.currentTimeMillis()) }
+                    val attemptAt = System.currentTimeMillis()
+                    val result = runCatching { guideRepo.load(url, channels, forceNext) }
+                    forceNext = false
+                    result
+                        .onSuccess { data -> show(data) }
+                        .onFailure { e ->
+                            _state.update {
+                                it.copy(guideStatus = GuideStatus(error = guideErrorMessage(e), fromPlaylist = own == null, url = url))
+                            }
                         }
-                    }
-                    .onFailure { e ->
-                        _state.update {
-                            it.copy(guideStatus = GuideStatus(error = guideErrorMessage(e), fromPlaylist = own == null, url = url))
-                        }
-                    }
-                forceNext = true
-                delay(GuideRepository.MAX_AGE_MS)
+                    // Due when the file turns MAX_AGE old; after a failed download (an older copy, or
+                    // nothing), MAX_AGE from this attempt.
+                    val fileDue = result.getOrNull()?.downloadedAt?.plus(GuideRepository.MAX_AGE_MS)
+                    dueAt = fileDue?.takeIf { it > attemptAt } ?: (attemptAt + GuideRepository.MAX_AGE_MS)
+                }
             }
         }
     }
@@ -244,18 +355,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun startLineSweep() {
         sweepJob?.cancel()
         sweepJob = viewModelScope.launch {
-            while (true) {
-                val s = _state.value
-                val first = (listOfNotNull(repo.lastChannelKey) + s.favorites).toSet()
-                val (likely, rest) = s.channels.partition { it.stableKey in first }
-                lines.sweep(likely + rest, LineRepository.SWEEP_MAX_AGE_MS)
-                delay(LineRepository.SWEEP_MAX_AGE_MS)
+            startupSettled()
+            // Stops while the app is off screen. Back on screen it starts over, which only probes
+            // the lines whose numbers have gone stale meanwhile.
+            foreground.collectLatest { visible ->
+                if (!visible) return@collectLatest
+                while (true) {
+                    val s = _state.value
+                    val first = (listOfNotNull(repo.lastChannelKey) + s.favorites).toSet()
+                    val (likely, rest) = s.channels.partition { it.stableKey in first }
+                    lines.sweep(likely + rest, LineRepository.SWEEP_MAX_AGE_MS)
+                    lines.save()
+                    delay(LineRepository.SWEEP_MAX_AGE_MS)
+                }
             }
         }
     }
 
     /** Records how playing [entry] of the playing channel went. */
-    fun reportLine(entry: PlaylistEntry, ok: Boolean) = lines.report(entry, ok)
+    fun reportLine(entry: PlaylistEntry, ok: Boolean) {
+        if (ok) playedOnce.value = true
+        lines.report(entry, ok)
+    }
 
     /** Remembers [entry] as the line the viewer chose for the playing channel. */
     fun pickLine(entry: PlaylistEntry) {
@@ -401,3 +522,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
 /** How long "已导入" stays on the source page before the list comes back. */
 private const val IMPORTED_NOTE_MS = 800L
+
+/** Most that background work waits at start-up for the first channel to start playing. */
+private const val STARTUP_GRACE_MS = 5_000L

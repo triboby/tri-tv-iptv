@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.coerceAtMost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -40,8 +41,11 @@ object LogoCache {
     private const val TAG = "TriTV-Logos"
     private const val MAX_BYTES = 512 * 1024
 
-    // A playlist's ~90 logos at about 200 KB each once decoded.
-    private val memory = object : LruCache<String, ImageBitmap>(24 * 1024 * 1024) {
+    /** Logos are drawn 44dp tall; kept a little taller so they stay sharp. */
+    private const val KEEP_HEIGHT_DP = 48
+
+    // A playlist's ~90 logos at about 50 KB each once scaled to the height they are drawn at.
+    private val memory = object : LruCache<String, ImageBitmap>(8 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
     }
 
@@ -60,6 +64,11 @@ object LogoCache {
     }
     private val downloads = Semaphore(4)
 
+    // Decoding, trimming and scaling are CPU work; two at a time leaves the cores to the player while
+    // the whole playlist's logos load at start-up.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val decoding = Dispatchers.IO.limitedParallelism(2)
+
     fun cached(urls: List<String>): ImageBitmap? = urls.firstNotNullOfOrNull { memory.get(it) }
 
     /** The first of [urls] that loads, or null if none does. */
@@ -67,7 +76,7 @@ object LogoCache {
         for (url in urls) {
             memory.get(url)?.let { return it }
             if (recent(failed, url) || recent(deadHosts, hostOf(url))) continue
-            val bitmap = withContext(Dispatchers.IO) { fromDisk(context, url) ?: download(context, url) }
+            val bitmap = fromDisk(context, url) ?: download(context, url)
             if (bitmap != null) {
                 memory.put(url, bitmap)
                 return bitmap
@@ -77,22 +86,37 @@ object LogoCache {
         return null
     }
 
-    /** Loads all [logoLists] (one per channel) into memory, at most four downloads at a time. */
+    /**
+     * Loads all [logoLists] (one per channel) into memory, at most four downloads at a time. Waits a
+     * few seconds first so the channel starting up, and its own logo, go first.
+     */
     suspend fun preload(context: Context, logoLists: List<List<String>>) = coroutineScope {
+        delay(PRELOAD_DELAY_MS)
         for (urls in logoLists) {
             if (urls.isNotEmpty() && cached(urls) == null) launch { load(context, urls) }
         }
     }
 
+    private const val PRELOAD_DELAY_MS = 3_000L
+
+    // Holds logos already trimmed and scaled, as PNG, so later starts only decode them. "logos" held
+    // the files as downloaded and is cleared once.
+    private const val DIR = "logos-scaled"
+    @Volatile private var oldDirCleared = false
+
     private fun file(context: Context, url: String): File {
         val hash = MessageDigest.getInstance("SHA-1").digest(url.toByteArray())
             .joinToString("") { "%02x".format(it) }
-        return File(File(context.cacheDir, "logos"), hash)
+        return File(File(context.cacheDir, DIR), hash)
     }
 
-    private fun fromDisk(context: Context, url: String): ImageBitmap? {
+    private suspend fun fromDisk(context: Context, url: String): ImageBitmap? = withContext(decoding) {
+        if (!oldDirCleared) {
+            oldDirCleared = true
+            runCatching { File(context.cacheDir, "logos").deleteRecursively() }
+        }
         val f = file(context, url)
-        return if (f.exists()) decode(f.readBytes()) else null
+        if (f.exists()) BitmapFactory.decodeFile(f.path)?.asImageBitmap() else null
     }
 
     private fun hostOf(url: String): String? = runCatching { URL(url).host }.getOrNull()
@@ -103,12 +127,16 @@ object LogoCache {
         // Another download may have found this host dead while this one waited for a permit.
         if (recent(deadHosts, hostOf(url))) return@withPermit null
         try {
-            val bytes = fetch(url)
-            val bitmap = decode(bytes) ?: return@withPermit null
-            val f = file(context, url)
-            f.parentFile?.mkdirs()
-            f.writeBytes(bytes)
-            bitmap
+            val bytes = withContext(Dispatchers.IO) { fetch(url) }
+            withContext(decoding) {
+                val bitmap = decode(bytes, keepHeight(context)) ?: return@withContext null
+                runCatching {
+                    val f = file(context, url)
+                    f.parentFile?.mkdirs()
+                    f.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                }
+                bitmap.asImageBitmap()
+            }
         } catch (e: HttpStatusException) {
             Log.i(TAG, "logo failed: $url ($e)")
             null
@@ -145,17 +173,27 @@ object LogoCache {
         throw HttpStatusException("too many redirects")
     }
 
-    // Logos come as large as 640×320; halve those, they are drawn at most ~220 px wide.
-    private fun decode(bytes: ByteArray): ImageBitmap? {
+    private fun keepHeight(context: Context): Int =
+        (KEEP_HEIGHT_DP * context.resources.displayMetrics.density).toInt().coerceAtLeast(KEEP_HEIGHT_DP)
+
+    /**
+     * Logos come as large as 640×320 but are drawn 44dp tall: decoded at a power-of-two step that
+     * stays above [keepHeight], trimmed, then scaled down to it.
+     */
+    private fun decode(bytes: ByteArray, keepHeight: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0) return null
+        var sample = 1
+        while (bounds.outHeight / (sample * 2) >= keepHeight * 2) sample *= 2
         val options = BitmapFactory.Options().apply {
-            inSampleSize = if (bounds.outWidth >= 480) 2 else 1
+            inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
-        return trimTransparent(bitmap).asImageBitmap()
+        val trimmed = trimTransparent(BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null)
+        if (trimmed.height <= keepHeight) return trimmed
+        val width = (trimmed.width.toLong() * keepHeight / trimmed.height).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(trimmed, width, keepHeight, true)
     }
 
     // Logo sets pad their artwork with different amounts of transparent margin, so the same box

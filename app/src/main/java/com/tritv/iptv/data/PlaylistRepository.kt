@@ -40,6 +40,15 @@ class PlaylistRepository(context: Context) {
         set(value) = prefs.edit().putString(KEY_FAVORITES, FavoriteList.encode(value)).apply()
 
     /**
+     * The last copy downloaded from [url], or null if there is none. Shown at start-up while the
+     * playlist is fetched again, so the channels do not wait on the network.
+     */
+    fun cached(url: String): Playlist? {
+        if (prefs.getString(KEY_CACHE_URL, null) != url || !cache.exists()) return null
+        return runCatching { parse(cache.readText(), cachedAt = prefs.getLong(KEY_CACHE_TIME, 0L)) }.getOrNull()
+    }
+
+    /**
      * Downloads and parses the playlist. For an address that has worked before, network errors
      * are retried a few times, since right after the TV wakes from standby its network takes a
      * while to come up; if it still fails, the last copy downloaded from it is used.
