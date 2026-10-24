@@ -64,7 +64,7 @@ internal fun probeSwitch(
 ): Int? {
     val line = attempts[current].sourceIndex
     fun statOf(i: Int) = stats[lineUrls[attempts[i].sourceIndex]]
-    fun working(s: LineStat?) = s != null && !s.failing && s.okAt > startedAt - FRESH_MS
+    fun working(s: LineStat?) = s != null && !s.failing && s.okAt > startedAt - FRESH_MS && !s.adRecently(now)
     val cur = statOf(current)
     val dead = cur != null && cur.failing && cur.failAt > startedAt
     if (!dead && (now - startedAt < SLOW_START_MS || working(cur))) return null
@@ -74,6 +74,29 @@ internal fun probeSwitch(
         ?.let { return it }
     if (!dead) return null
     return others.firstOrNull { it > current && statOf(it)?.failing != true }
+}
+
+/**
+ * The attempt to move to once attempt [current] has shown an advert: the first attempt of a line
+ * after it that is not known dead or an advert, else one before it (the viewer may have stepped
+ * past them), else null when none is left.
+ */
+internal fun nextLineAfterAd(
+    attempts: List<Attempt>,
+    lineUrls: List<String>,
+    stats: Map<String, LineStat>,
+    current: Int,
+    now: Long,
+): Int? {
+    val line = attempts[current].sourceIndex
+    fun usable(i: Int): Boolean {
+        val s = stats[lineUrls[attempts[i].sourceIndex]]
+        return attempts[i].sourceIndex != line && s?.adRecently(now) != true
+    }
+    fun firstOfLine(i: Int) = i == 0 || attempts[i - 1].sourceIndex != attempts[i].sourceIndex
+    val candidates = (current + 1 until attempts.size) + (0 until current)
+    return candidates.firstOrNull { usable(it) && firstOfLine(it) && stats[lineUrls[attempts[it].sourceIndex]]?.failing != true }
+        ?: candidates.firstOrNull { usable(it) && firstOfLine(it) }
 }
 
 /** A short Chinese reason for the error that ended the last line, for the player's info bar. */

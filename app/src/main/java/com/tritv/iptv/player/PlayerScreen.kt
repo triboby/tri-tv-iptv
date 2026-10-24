@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,16 +58,19 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsManifest
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
+import com.tritv.iptv.data.AdFilter
 import com.tritv.iptv.data.Channel
 import com.tritv.iptv.data.LineStat
 import com.tritv.iptv.data.PlaylistEntry
@@ -109,6 +113,8 @@ fun PlayerScreen(
     onLineResult: (PlaylistEntry, Boolean) -> Unit,
     /** Called when a line the viewer switched to starts playing. */
     onLinePicked: (PlaylistEntry) -> Unit,
+    /** Called when a line turns out to play an advert loop instead of the channel. */
+    onLineAd: (PlaylistEntry) -> Unit,
     channelNumber: Int,
     programmes: List<Programme>,
     isFavorite: Boolean,
@@ -183,6 +189,10 @@ fun PlayerScreen(
     var showInfo by remember { mutableStateOf(true) }
     // Brief "已加入收藏 / 已取消收藏" note after the viewer toggles the favourite.
     var favoriteNote by remember { mutableStateOf<String?>(null) }
+    // Brief note that a line playing an advert was left for another.
+    var adNote by remember { mutableStateOf<String?>(null) }
+    // Watches the current attempt's HLS playlists for an advert; replaced with each attempt.
+    val adCheck = remember(channel) { arrayOf(AdCheck()) }
     // Set once a held OK has toggled the favourite, so its release does not also toggle the info bar.
     var okHeld by remember { mutableStateOf(false) }
     // Channel steps pressed in quick succession, applied together once the presses pause, so a
@@ -193,6 +203,10 @@ fun PlayerScreen(
     val jumpSeen = remember { intArrayOf(numberEntry.jumps, 0) } // number jumps seen; 1 while a zap is in flight
     val attempt = attempts[attemptIndex]
     val attemptStartedAt = remember(channel, attemptIndex) { System.currentTimeMillis() }
+
+    val lineUrls = remember(lines) { lines.map { it.url } }
+    // Read by the listener when it looks for the next line, so it sees the latest probes.
+    val latestStats by rememberUpdatedState(lineStats)
 
     // Keyed on channel so the listener sees this channel's attempt state.
     DisposableEffect(player, channel, lines) {
@@ -226,6 +240,29 @@ fun PlayerScreen(
                 }
             }
 
+            // Each load and live refresh of an HLS playlist lands here, so the advert check costs
+            // no requests of its own.
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                val manifest = player.currentManifest as? HlsManifest ?: return
+                val check = adCheck[0]
+                if (check.tripped || !check.isAd(manifest)) return
+                check.tripped = true
+                val line = attempts[attemptIndex].sourceIndex
+                onLineAd(lines[line])
+                if (silentLine?.let { attempts[it].sourceIndex } == line) silentLine = null
+                // A line the viewer picked is left too: an advert is never what they wanted.
+                stayOnLine = false
+                pickedByViewer = false
+                val next = nextLineAfterAd(attempts, lineUrls, latestStats, attemptIndex, System.currentTimeMillis())
+                if (next == null) {
+                    player.stop()
+                    error = "这个台的线路都在播广告"
+                } else {
+                    adNote = "线路 ${line + 1} 在播广告，已换线路"
+                    attemptIndex = next
+                }
+            }
+
             // A line whose audio no renderer can decode plays silently without raising an
             // error, so treat it as a failure here and try the next line.
             override fun onTracksChanged(tracks: Tracks) {
@@ -242,7 +279,6 @@ fun PlayerScreen(
     // Probes of this channel's lines start with it and answer well before the player gives up
     // on a dead line, so act on them: leave a line found dead, or one still loading after a
     // few seconds when another line is known to work.
-    val lineUrls = remember(lines) { lines.map { it.url } }
     val lineStat = lineStats[lineUrls[attempt.sourceIndex]]
     val channelStats = lineUrls.map { lineStats[it] }
     LaunchedEffect(attemptIndex, channelStats) {
@@ -264,6 +300,7 @@ fun PlayerScreen(
     LaunchedEffect(channel, attempt) {
         ready = false
         firstFrame = false
+        adCheck[0] = AdCheck()
         val source = lines[attempt.sourceIndex]
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(source.userAgent ?: DEFAULT_USER_AGENT)
@@ -325,6 +362,12 @@ fun PlayerScreen(
             delay(4_000)
             showInfo = false
         }
+    }
+
+    LaunchedEffect(adNote) {
+        if (adNote == null) return@LaunchedEffect
+        delay(3_000)
+        adNote = null
     }
 
     LaunchedEffect(favoriteNote) {
@@ -484,7 +527,7 @@ fun PlayerScreen(
         }
 
         AnimatedVisibility(
-            visible = favoriteNote != null,
+            visible = favoriteNote != null || adNote != null,
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(200)),
             // Centred: stations put their logo in a top corner.
@@ -499,8 +542,10 @@ fun PlayerScreen(
                     .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Pill)
                     .padding(start = 12.dp, end = 16.dp),
             ) {
-                Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { StarIcon(filled = isFavorite) }
-                Text(favoriteNote.orEmpty(), style = TriTvType.Caption)
+                if (favoriteNote != null) {
+                    Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { StarIcon(filled = isFavorite) }
+                }
+                Text(favoriteNote ?: adNote.orEmpty(), style = TriTvType.Caption)
             }
         }
 
@@ -766,5 +811,24 @@ private fun KeyHint(key: String, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         KeyCap(key)
         Text(label, style = TriTvType.Small, color = TriTvColors.TextMuted)
+    }
+}
+
+/** The advert checks of [AdFilter] applied to one attempt's HLS playlists as the player loads them. */
+private class AdCheck {
+    private val loop = AdFilter.LoopWatch()
+    /** Set once the attempt has been found to be an advert, so it is left only once. */
+    var tripped = false
+
+    @OptIn(UnstableApi::class)
+    fun isAd(manifest: HlsManifest): Boolean {
+        // After redirects, so the address the stream really came from.
+        if (AdFilter.isAdUrl(manifest.multivariantPlaylist.baseUri)) return true
+        val media = manifest.mediaPlaylist
+        if (AdFilter.isAdUrl(media.baseUri)) return true
+        val uris = media.segments.map { it.url }
+        if (uris.any(AdFilter::isAdUrl)) return true
+        if (media.hasEndTag && uris.isNotEmpty() && media.durationUs < AdFilter.MAX_CLIP_SECONDS * 1_000_000L) return true
+        return loop.check(media.mediaSequence, uris)
     }
 }

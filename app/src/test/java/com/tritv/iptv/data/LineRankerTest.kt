@@ -69,4 +69,23 @@ class LineRankerTest {
         assertEquals(true, LineRanker.probeable("HTTP://a/1.m3u8"))
         assertEquals(false, LineRanker.probeable("rtsp://a/1"))
     }
+
+    @Test
+    fun recentAdvertGoesLastEvenIfPickedOrWorkingSince() {
+        val now = 10 * LineStat.AD_HOLD_MS
+        val stats = mapOf(
+            "a" to LineStat(latencyMs = 50, okAt = now - 1, failAt = now - 2, adAt = now - 2),
+            "b" to LineStat(failAt = now - 5),
+        )
+        assertEquals(listOf(2, 3, 1, 0), LineRanker.order(urls, stats, picked = "a", now = now))
+        // Once the hold is over it ranks on its latest result again.
+        assertEquals(listOf(0, 2, 3, 1), LineRanker.order(urls, stats, picked = "a", now = now + LineStat.AD_HOLD_MS))
+    }
+
+    @Test
+    fun advertTimeSurvivesEncodingAndOldFormReads() {
+        val stat = LineStat(latencyMs = 80, okAt = 3, failAt = 4, adAt = 4)
+        assertEquals(stat, LineRanker.decode(LineRanker.encode(stat)))
+        assertEquals(LineStat(latencyMs = 80, okAt = 3, failAt = 4), LineRanker.decode("80|3|4"))
+    }
 }

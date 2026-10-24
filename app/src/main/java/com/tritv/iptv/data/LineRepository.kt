@@ -62,6 +62,7 @@ class LineRepository(context: Context) {
 
     private fun describe(stat: LineStat?): String = when {
         stat == null || stat.checkedAt == 0L -> "?"
+        stat.adRecently(System.currentTimeMillis()) -> "ad"
         stat.failing -> "dead"
         else -> "${stat.latencyMs ?: "ok"}"
     }
@@ -75,6 +76,24 @@ class LineRepository(context: Context) {
     fun report(entry: PlaylistEntry, ok: Boolean) {
         Log.i(TAG, (if (ok) "played " else "play failed ") + entry.url)
         if (ok || online()) record(entry.url, ok, latency = null)
+    }
+
+    /**
+     * Records that playing [entry] showed an advert instead of the channel. The line goes to the
+     * back of its channel for a while, and stops being the viewer's pick.
+     */
+    fun reportAd(entry: PlaylistEntry) {
+        Log.i(TAG, "play showed ad " + entry.url)
+        recordAd(entry.url)
+    }
+
+    private fun recordAd(url: String) {
+        val now = System.currentTimeMillis()
+        _stats.update { all -> all + (url to (all[url] ?: LineStat()).showedAd(now)) }
+        unsaved += url
+        saveSoon()
+        val picks = pickPrefs.all.filterValues { it == url }.keys
+        if (picks.isNotEmpty()) pickPrefs.edit().apply { picks.forEach { remove(it) } }.apply()
     }
 
     /** Forgets lines that are no longer in the playlist. */
@@ -139,10 +158,13 @@ class LineRepository(context: Context) {
     private suspend fun probeAndRecord(entry: PlaylistEntry) {
         if (!inFlight.add(entry.url)) return
         try {
-            val latency = probe(entry)
-            // With the TV itself offline (e.g. just after standby) every line fails; that says
-            // nothing about the lines, so it must not push working ones to the back.
-            if (latency != null || online()) record(entry.url, ok = latency != null, latency = latency)
+            when (val result = probe(entry)) {
+                is LineProbe.Result.Ok -> record(entry.url, ok = true, latency = result.latencyMs)
+                LineProbe.Result.Ad -> recordAd(entry.url)
+                // With the TV itself offline (e.g. just after standby) every line fails; that says
+                // nothing about the lines, so it must not push working ones to the back.
+                LineProbe.Result.Dead -> if (online()) record(entry.url, ok = false, latency = null)
+            }
         } finally {
             inFlight.remove(entry.url)
         }
@@ -174,16 +196,22 @@ class LineRepository(context: Context) {
      * timeouts do: a host that resolves to several dead addresses, or a slow DNS answer, can
      * otherwise hold a probe far longer than the player takes to give up on its own.
      */
-    private suspend fun probe(entry: PlaylistEntry): Int? {
+    private suspend fun probe(entry: PlaylistEntry): LineProbe.Result {
         val conns = Collections.synchronizedList(mutableListOf<HttpURLConnection>())
-        val job = probeScope.async { runCatching { LineProbe.run(entry, PROBE_TIMEOUT_MS) { conns += it } }.getOrNull() }
-        val latency = withTimeoutOrNull(PROBE_DEADLINE_MS) { job.await() }
+        val job = probeScope.async {
+            runCatching { LineProbe.run(entry, PROBE_TIMEOUT_MS) { conns += it } }.getOrDefault(LineProbe.Result.Dead)
+        }
+        val result = withTimeoutOrNull(PROBE_DEADLINE_MS) { job.await() } ?: LineProbe.Result.Dead
         if (job.isActive) {
             job.cancel()
             synchronized(conns) { conns.forEach { runCatching { it.disconnect() } } }
         }
-        Log.i(TAG, (if (latency != null) "ok ${latency}ms " else "dead ") + entry.url)
-        return latency
+        Log.i(TAG, when (result) {
+            is LineProbe.Result.Ok -> "ok ${result.latencyMs}ms "
+            LineProbe.Result.Ad -> "ad "
+            LineProbe.Result.Dead -> "dead "
+        } + entry.url)
+        return result
     }
 
     companion object {
