@@ -657,15 +657,17 @@ private fun GroupChip(
     /** Drawn in the icon slot instead of the label's emoji. */
     drawnIcon: (@Composable () -> Unit)? = null,
 ) {
+    // The group being shown is a soft grey fill, as in the design, rather than the usual blue ring;
+    // focus still fills it blue over the grey.
     FocusRow(
         onClick = onClick,
-        selected = selected,
         shape = Radius.Pill,
         contentPadding = PaddingValues(horizontal = 10.dp),
         gap = 10.dp,
         modifier = modifier
             .fillMaxWidth()
-            .height(40.dp),
+            .height(40.dp)
+            .then(if (selected) Modifier.background(SelectedGroupFill, Radius.Pill) else Modifier),
     ) {
         if (drawnIcon != null) {
             Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { drawnIcon() }
@@ -694,6 +696,8 @@ private fun GroupChip(
         }
     }
 }
+
+private val SelectedGroupFill = Color.White.copy(alpha = 0.16f)
 
 /** Three 14dp lines, 4dp apart, centred in 16dp: the icon for all channels. */
 @Composable
