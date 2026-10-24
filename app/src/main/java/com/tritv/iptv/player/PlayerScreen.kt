@@ -671,9 +671,11 @@ private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, is
  */
 @Composable
 private fun CardHeader(number: String, channel: Channel?, caret: Boolean = false) {
+    val logo = channel?.let { rememberLogo(it.logos) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        // A logo sits closer than a name: the digits' own side bearing already adds to the gap.
+        horizontalArrangement = Arrangement.spacedBy(if (logo != null) 8.dp else 12.dp),
         modifier = Modifier.height(44.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -683,7 +685,6 @@ private fun CardHeader(number: String, channel: Channel?, caret: Boolean = false
         if (channel == null) {
             Text("没有这个频道", style = CardTitle, color = TriTvColors.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
         } else {
-            val logo = rememberLogo(channel.logos)
             if (logo != null) {
                 ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
             } else {

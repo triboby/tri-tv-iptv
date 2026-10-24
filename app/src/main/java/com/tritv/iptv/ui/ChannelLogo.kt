@@ -171,7 +171,7 @@ object LogoCache {
         var bottom = -1
         for (y in 0 until h) {
             for (x in 0 until w) {
-                if (pixels[y * w + x] ushr 24 > 16) {
+                if (pixels[y * w + x] ushr 24 > 24) {
                     if (x < left) left = x
                     if (x > right) right = x
                     if (y < top) top = y
