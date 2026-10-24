@@ -239,6 +239,8 @@ fun ChannelListScreen(
                         else !state.favoritesSelected && state.selectedGroup == choice.group
                         GroupChip(
                             label = label,
+                            // "全部" has no emoji; three drawn lines sit exactly in the middle, where a ☰ glyph would not.
+                            drawnIcon = if (!choice.favorites && choice.group == null) ({ ListIcon() }) else null,
                             count = count,
                             selected = selected,
                             expanded = groupsFocused,
@@ -410,7 +412,7 @@ private fun Modifier.arrive(order: Int, play: Boolean): Modifier {
 private const val GROUP_FOCUS_DELAY_MS = 300L
 
 private val FAVORITES_LABEL = GroupLabel("⭐", "收藏")
-private val ALL_LABEL = GroupLabel("☰", "全部")
+private val ALL_LABEL = GroupLabel(null, "全部")
 
 /** Long-press menu for a channel: add to or remove from the favourites, and move within them. */
 @Composable
@@ -652,6 +654,8 @@ private fun GroupChip(
     expanded: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Drawn in the icon slot instead of the label's emoji. */
+    drawnIcon: (@Composable () -> Unit)? = null,
 ) {
     FocusRow(
         onClick = onClick,
@@ -663,7 +667,9 @@ private fun GroupChip(
             .fillMaxWidth()
             .height(40.dp),
     ) {
-        if (label.icon != null || expanded) {
+        if (drawnIcon != null) {
+            Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { drawnIcon() }
+        } else if (label.icon != null || expanded) {
             IconSlot(label.icon, 20.dp, 16.sp)
         } else {
             Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
@@ -685,6 +691,19 @@ private fun GroupChip(
                 maxLines = 1,
                 softWrap = false,
             )
+        }
+    }
+}
+
+/** Three 14dp lines, 4dp apart, centred in 16dp: the icon for all channels. */
+@Composable
+private fun ListIcon(color: Color = LocalContentColor.current) {
+    Canvas(Modifier.size(16.dp)) {
+        val stroke = 1.5.dp.toPx()
+        val inset = 1.dp.toPx()
+        listOf(4f, 8f, 12f).forEach { y ->
+            val yPx = y.dp.toPx()
+            drawLine(color, Offset(inset, yPx), Offset(size.width - inset, yPx), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
         }
     }
 }
