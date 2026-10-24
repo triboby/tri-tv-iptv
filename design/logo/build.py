@@ -88,9 +88,9 @@ def icon(k, r=None, d=26, size=240, rx=54):
             f'<rect width="240" height="240" rx="{rx}" fill="{v["bg"]}"/>{m}</svg>')
 
 def banner(k, r=None, d=26, font=FONT):
-    """640x360 (xhdpi 320x180dp). Type 68 (2x34); visible mark height 110 = 68*phi; gap 42 = 68/phi."""
+    """640x360 (xhdpi 320x180dp). Type 84, weight 600, all white; visible mark height 136 = 84*phi; gap 52 = 84/phi."""
     v = V[k]; r = rad(4) if r is None else r
-    fs, mh, gap = 68, 110, 42
+    fs, mh, gap = 84, 136, 52
     _, w, _ = mark(v['kind'], r, v['fills'], 4, v['gapcol'], 0, 0, mh, step=d)
     total = w + gap + fs * 2
     x0 = (640 - total) / 2
@@ -100,8 +100,7 @@ def banner(k, r=None, d=26, font=FONT):
     tx = x0 + w + gap
     return (f'<svg viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg"><defs>{GRAD_C}</defs>'
             f'<rect width="640" height="360" fill="{v["bg"]}"/>{m}'
-            f'<text x="{f(tx)}" y="180" dy=".36em" font-family="{font}" font-weight="700" font-size="{fs}">'
-            f'<tspan fill="{v["word"][0]}">直</tspan><tspan fill="{v["word"][1]}">播</tspan></text></svg>')
+            f'<text x="{f(tx)}" y="180" dy=".36em" font-family="{font}" font-weight="600" font-size="{fs}" fill="{v["word"][0]}">直播</text></svg>')
 
 if __name__ == '__main__':
     out = {k: dict(title=V[k]['title'], icon=icon(k), banner=banner(k)) for k in V}

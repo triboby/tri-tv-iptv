@@ -7,10 +7,10 @@ const res = repo + '/app/src/main/res/';
   const b = await chromium.launch();
   const shot = async (svg, w, h, out, font) => {
     const p = await b.newPage({ viewport: { width: w, height: h } });
-    const head = font ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@700&text=%E7%9B%B4%E6%92%AD&display=block">' : '';
+    const head = font ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@600&text=%E7%9B%B4%E6%92%AD&display=block">' : '';
     await p.setContent(`<!doctype html><html><head>${head}<style>html,body{margin:0;background:transparent}svg{display:block;width:${w}px;height:${h}px}</style></head><body>${svg}</body></html>`);
-    if (font) { await p.evaluate(() => document.fonts.load('700 68px "Noto Sans SC"', '直播')); await p.evaluate(() => document.fonts.ready);
-      console.log('font ok:', await p.evaluate(() => document.fonts.check('700 68px "Noto Sans SC"', '直播'))); }
+    if (font) { await p.evaluate(() => document.fonts.load('600 84px "Noto Sans SC"', '直播')); await p.evaluate(() => document.fonts.ready);
+      console.log('font ok:', await p.evaluate(() => document.fonts.check('600 84px "Noto Sans SC"', '直播'))); }
     await p.screenshot({ path: out, omitBackground: true });
     await p.close();
   };
