@@ -484,7 +484,7 @@ private fun Hero(state: UiState, focusedIndex: Int, now: Long) {
         // The logo stands in for the name: CCTV's even spells out the category ("科教").
         val logo = rememberLogo(channel.logos)
         if (logo != null) {
-            ChannelLogo(logo, ChannelCategory.label(channel.name), Modifier.size(width = 144.dp, height = 72.dp), Alignment.Center)
+            ChannelLogo(logo, ChannelCategory.label(channel.name), height = 56.dp, maxWidth = 240.dp)
         } else {
             Text(
                 ChannelCategory.label(channel.name),

@@ -504,11 +504,7 @@ fun PlayerScreen(
                     // The logo stands in for the name, as on the channel list; text until one loads.
                     val logo = rememberLogo(channel.logos)
                     if (logo != null) {
-                        ChannelLogo(
-                            logo,
-                            ChannelCategory.label(channel.name),
-                            Modifier.size(width = 88.dp, height = 44.dp),
-                        )
+                        ChannelLogo(logo, ChannelCategory.label(channel.name), height = 44.dp, maxWidth = 176.dp)
                     } else {
                         Text(
                             ChannelCategory.label(channel.name),

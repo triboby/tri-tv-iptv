@@ -6,16 +6,18 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import android.util.LruCache
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -151,7 +153,33 @@ object LogoCache {
             inSampleSize = if (bounds.outWidth >= 480) 2 else 1
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
+        return trimTransparent(bitmap).asImageBitmap()
+    }
+
+    // Logo sets pad their artwork with different amounts of transparent margin, so the same box
+    // drew some logos large and some small. Cropping to the visible pixels evens that out.
+    private fun trimTransparent(bitmap: Bitmap): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        var left = w
+        var right = -1
+        var top = h
+        var bottom = -1
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                if (pixels[y * w + x] ushr 24 > 16) {
+                    if (x < left) left = x
+                    if (x > right) right = x
+                    if (y < top) top = y
+                    if (y > bottom) bottom = y
+                }
+            }
+        }
+        if (right < 0 || (left == 0 && top == 0 && right == w - 1 && bottom == h - 1)) return bitmap
+        return Bitmap.createBitmap(bitmap, left, top, right - left + 1, bottom - top + 1)
     }
 }
 
@@ -169,14 +197,16 @@ fun rememberLogo(urls: List<String>): ImageBitmap? {
     return logo.value
 }
 
-/** A logo scaled to fit its box, left-aligned so it lines up with the text around it. */
+/**
+ * A logo drawn [height] tall, as wide as its shape needs up to [maxWidth], so every station's
+ * logo reads at the same size whether it is square or a wide wordmark.
+ */
 @Composable
-fun ChannelLogo(logo: ImageBitmap, description: String, modifier: Modifier = Modifier, alignment: Alignment = Alignment.CenterStart) {
+fun ChannelLogo(logo: ImageBitmap, description: String, height: Dp, maxWidth: Dp, modifier: Modifier = Modifier) {
     Image(
         bitmap = logo,
         contentDescription = description,
         contentScale = ContentScale.Fit,
-        alignment = alignment,
-        modifier = modifier,
+        modifier = modifier.height(height).widthIn(max = maxWidth),
     )
 }
