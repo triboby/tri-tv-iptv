@@ -28,10 +28,12 @@
 - **按 Home 停止播放**：回到桌面时停掉直播流，再次打开时继续播同一个频道。
 - 支持 HLS、DASH、RTSP 和普通 HTTP 流；允许明文 http，方便播放局域网内的源。
 
-<p align="center">
-  <img src="docs/player.jpg" width="880" alt="播放界面"><br><br>
-  <img src="docs/guide.jpg" width="880" alt="节目表">
-</p>
+| | |
+| --- | --- |
+| <img src="docs/groups.jpg" alt="分组栏展开"> | <img src="docs/favorites.jpg" alt="收藏分组"> |
+| 分组栏展开，节目表和直播源在底部 | 收藏 |
+| <img src="docs/player.jpg" alt="全屏播放信息栏"> | <img src="docs/guide.jpg" alt="节目表"> |
+| 全屏播放，按 OK 显示信息栏 | 按 ≡ 打开节目表 |
 
 ## 遥控器
 
