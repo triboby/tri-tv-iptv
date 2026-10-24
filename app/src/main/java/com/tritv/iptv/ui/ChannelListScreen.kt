@@ -643,7 +643,7 @@ private fun NowPlayingMark(color: Color) {
 }
 
 /**
- * 40dp pill for a group, 10dp in from both sides. Collapsed it is a circle with the group's emoji
+ * 40dp chip for a group, 10dp in from both sides, with the channel rows' 11dp corners. Collapsed it is a square with the group's emoji
  * (or the first character of its name); expanded the name and count follow after a 10dp gap.
  */
 @Composable
@@ -661,13 +661,13 @@ private fun GroupChip(
     // focus still fills it blue over the grey.
     FocusRow(
         onClick = onClick,
-        shape = Radius.Pill,
+        shape = Radius.Row,
         contentPadding = PaddingValues(horizontal = 10.dp),
         gap = 10.dp,
         modifier = modifier
             .fillMaxWidth()
             .height(40.dp)
-            .then(if (selected) Modifier.background(SelectedGroupFill, Radius.Pill) else Modifier),
+            .then(if (selected) Modifier.background(SelectedGroupFill, Radius.Row) else Modifier),
     ) {
         if (drawnIcon != null) {
             Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { drawnIcon() }
@@ -712,7 +712,7 @@ private fun ListIcon(color: Color = LocalContentColor.current) {
     }
 }
 
-/** A pill at the foot of the group rail that opens another page; laid out like a [GroupChip]. */
+/** A chip at the foot of the group rail that opens another page; laid out like a [GroupChip]. */
 @Composable
 private fun RailAction(
     label: String,
@@ -723,7 +723,7 @@ private fun RailAction(
 ) {
     FocusRow(
         onClick = onClick,
-        shape = Radius.Pill,
+        shape = Radius.Row,
         contentPadding = PaddingValues(horizontal = 10.dp),
         gap = 10.dp,
         modifier = Modifier
@@ -757,7 +757,7 @@ private fun DrawerSkeleton() {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.width(RailCollapsed)) {
             AppMark()
             Spacer(Modifier.height(6.dp))
-            repeat(5) { Box(Modifier.size(40.dp).background(faint, Radius.Pill)) }
+            repeat(5) { Box(Modifier.size(40.dp).background(faint, Radius.Row)) }
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.width(DrawerListWidth)) {
             Box(
