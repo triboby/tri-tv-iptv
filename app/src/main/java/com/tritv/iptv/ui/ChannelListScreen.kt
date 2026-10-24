@@ -100,7 +100,8 @@ fun ChannelListScreen(
     onStartMove: (String) -> Unit,
     onMove: (Int) -> Unit,
     onFinishMove: (cancel: Boolean) -> Unit,
-    onPlayNumber: (Int) -> Unit,
+    /** Digits typed for a channel number; the player's corner card shows them. */
+    numberEntry: NumberEntry,
 ) {
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -111,7 +112,6 @@ fun ChannelListScreen(
     val now = rememberNow()
     val moving = state.movingFavorite
 
-    val numberEntry = rememberNumberEntry(onPlayNumber)
 
     // Set while the loading skeleton shows and for a moment after the list replaces it, so the
     // first rows arrive one after another instead of popping in at once.
@@ -131,6 +131,8 @@ fun ChannelListScreen(
     // Back closes the drawer onto the playing channel; while moving a favourite it cancels the move.
     BackHandler(enabled = moving == null && state.playingIndex != null) { onClose() }
     BackHandler(enabled = moving != null) { onFinishMove(true) }
+    // Last, so it goes first: Back drops a half-typed number before anything else.
+    BackHandler(enabled = numberEntry.active) { numberEntry.clear() }
 
     // Whether focus is in the group rail, which then opens out; resting on a group shows it without leaving the rail.
     var groupsFocused by remember { mutableStateOf(false) }
@@ -362,16 +364,6 @@ fun ChannelListScreen(
                     }
                 }
             }
-        }
-
-        if (numberEntry.active) {
-            ChannelJumpPill(
-                number = numberEntry.digits,
-                name = state.channels.getOrNull(numberEntry.digits.toInt() - 1)?.name,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 80.dp, end = ScreenMargin),
-            )
         }
     }
 

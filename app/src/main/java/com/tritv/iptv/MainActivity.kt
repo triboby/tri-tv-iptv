@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tritv.iptv.player.PlayerScreen
 import com.tritv.iptv.ui.ChannelListScreen
+import com.tritv.iptv.ui.rememberNumberEntry
 import com.tritv.iptv.ui.GuideScreen
 import com.tritv.iptv.ui.SettingsScreen
 import com.tritv.iptv.ui.TriTvTheme
@@ -41,6 +42,8 @@ class MainActivity : ComponentActivity() {
                     // One player for the drawer and full screen, so OK on the playing channel goes
                     // full screen without loading it again.
                     Box(Modifier.fillMaxSize()) {
+                        // Shared: digits typed in the drawer show in the player's corner card.
+                        val numberEntry = rememberNumberEntry(viewModel::playNumber)
                         val playing = state.playingIndex
                         if (playing != null && playing in state.channels.indices) {
                             val channel = state.channels[playing]
@@ -60,7 +63,7 @@ class MainActivity : ComponentActivity() {
                                 channelAt = { n -> state.channels.getOrNull(n - 1) },
                                 programmesOf = state::programmesOf,
                                 onZap = viewModel::zap,
-                                onPlayNumber = viewModel::playNumber,
+                                numberEntry = numberEntry,
                                 onExit = viewModel::openList,
                                 behindDrawer = state.listOpen,
                             )
@@ -79,7 +82,7 @@ class MainActivity : ComponentActivity() {
                                 onStartMove = viewModel::startMovingFavorite,
                                 onMove = viewModel::moveFavorite,
                                 onFinishMove = viewModel::finishMovingFavorite,
-                                onPlayNumber = viewModel::playNumber,
+                                numberEntry = numberEntry,
                             )
                         }
                     }

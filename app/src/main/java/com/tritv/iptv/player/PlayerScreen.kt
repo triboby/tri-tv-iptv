@@ -90,7 +90,7 @@ import com.tritv.iptv.ui.TriTvType
 import com.tritv.iptv.ui.digitOf
 import com.tritv.iptv.ui.rememberLogo
 import com.tritv.iptv.ui.rememberNow
-import com.tritv.iptv.ui.rememberNumberEntry
+import com.tritv.iptv.ui.NumberEntry
 import com.tritv.iptv.ui.tabular
 import com.tritv.iptv.ui.timeRange
 import kotlinx.coroutines.delay
@@ -122,7 +122,8 @@ fun PlayerScreen(
     /** Guide programmes of a channel, for what the zap or number card lands on. */
     programmesOf: (Channel) -> List<Programme>,
     onZap: (Int) -> Unit,
-    onPlayNumber: (Int) -> Unit,
+    /** Digits typed for a channel number, shared with the drawer. */
+    numberEntry: NumberEntry,
     onExit: () -> Unit,
     /**
      * Whether the channel drawer is open over the picture: the drawer then has the keys, and a card in
@@ -185,7 +186,9 @@ fun PlayerScreen(
     // Channel steps pressed in quick succession, applied together once the presses pause, so a
     // burst of Up/Down does not restart the player for every channel on the way.
     var pendingZap by remember { mutableIntStateOf(0) }
-    val numberEntry = rememberNumberEntry(onPlayNumber)
+    // After Up/Down or a typed number the new channel shows in the corner card, not the info bar.
+    var cardAfterJump by remember { mutableStateOf(false) }
+    val jumpSeen = remember { intArrayOf(numberEntry.jumps, 0) } // number jumps seen; 1 while a zap is in flight
     val attempt = attempts[attemptIndex]
     val attemptStartedAt = remember(channel, attemptIndex) { System.currentTimeMillis() }
 
@@ -306,9 +309,20 @@ fun PlayerScreen(
     )
 
     LaunchedEffect(channel, attempt.sourceIndex, behindDrawer) {
-        showInfo = true
-        delay(4_000)
-        showInfo = false
+        val jumped = !behindDrawer && (jumpSeen[1] == 1 || numberEntry.jumps != jumpSeen[0])
+        jumpSeen[0] = numberEntry.jumps
+        jumpSeen[1] = 0
+        if (jumped) {
+            showInfo = false
+            cardAfterJump = true
+            delay(4_000)
+            cardAfterJump = false
+        } else {
+            cardAfterJump = false
+            showInfo = true
+            delay(4_000)
+            showInfo = false
+        }
     }
 
     LaunchedEffect(favoriteNote) {
@@ -322,6 +336,7 @@ fun PlayerScreen(
         delay(350)
         val delta = pendingZap
         pendingZap = 0
+        jumpSeen[1] = 1
         onZap(delta)
     }
 
@@ -444,15 +459,17 @@ fun PlayerScreen(
             )
         }
 
-        // Where a burst of Up/Down or the typed digits will land, in the drawer's corner card.
+        // Where a burst of Up/Down or the typed digits will land, then the channel it landed on,
+        // in the drawer's corner card. An error goes to the info bar instead.
         val jumpNumber = when {
-            behindDrawer -> null
             numberEntry.active -> numberEntry.digits
+            behindDrawer -> null
             pendingZap != 0 -> zapTarget(pendingZap)?.let { "%03d".format(it + 1) }
+            cardAfterJump && error == null && !showInfo -> "%03d".format(channelNumber)
             else -> null
         }
         if (jumpNumber != null) {
-            val target = channelAt(jumpNumber.toInt())
+            val target = if (numberEntry.active || pendingZap != 0) channelAt(jumpNumber.toInt()) else channel
             JumpCard(
                 number = jumpNumber,
                 typing = numberEntry.active,
@@ -503,7 +520,7 @@ fun PlayerScreen(
             }
         }
 
-        if (behindDrawer) {
+        if (behindDrawer && jumpNumber == null) {
             DrawerCard(
                 channel = channel,
                 channelNumber = channelNumber,
