@@ -467,7 +467,7 @@ fun PlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
-                    .padding(top = 27.dp)
+                    .padding(top = 28.dp)
                     .height(36.dp)
                     .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Pill)
                     .padding(start = 12.dp, end = 16.dp),
@@ -486,7 +486,7 @@ fun PlayerScreen(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .padding(top = 27.dp, end = ScreenMargin)
+                    .padding(top = 28.dp, end = ScreenMargin)
                     .height(36.dp)
                     .background(TriTvColors.Ink.copy(alpha = 0.8f), Radius.Pill)
                     .padding(horizontal = 16.dp),
@@ -503,7 +503,7 @@ fun PlayerScreen(
                 isError = error != null,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = ScreenMargin, bottom = 27.dp),
+                    .padding(end = ScreenMargin, bottom = 28.dp),
             )
         }
 
@@ -651,7 +651,7 @@ private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, is
 }
 
 /** 28sp semibold: the number and name on the drawer card. */
-private val CardTitle = TriTvType.Tagline.copy(fontSize = 28.sp, lineHeight = 34.sp, letterSpacing = 0.2.sp)
+private val CardTitle = TriTvType.Tagline.copy(fontSize = 28.sp, lineHeight = 36.sp, letterSpacing = 0.2.sp)
 
 /**
  * Ring with a caption under it, centred on the picture. From 5 s on the second line says how long

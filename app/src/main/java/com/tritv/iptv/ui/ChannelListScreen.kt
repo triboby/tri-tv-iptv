@@ -688,7 +688,7 @@ private fun GroupChip(
             )
             Text(
                 "$count",
-                style = TriTvType.Small.copy(fontSize = 13.sp, lineHeight = 20.sp).tabular(),
+                style = TriTvType.Small.copy(fontSize = 14.sp, lineHeight = 20.sp).tabular(),
                 color = LocalContentColor.current.copy(alpha = 0.6f),
                 maxLines = 1,
                 softWrap = false,
@@ -703,7 +703,7 @@ private val SelectedGroupFill = Color.White.copy(alpha = 0.16f)
 @Composable
 private fun ListIcon(color: Color = LocalContentColor.current) {
     Canvas(Modifier.size(16.dp)) {
-        val stroke = 1.5.dp.toPx()
+        val stroke = 2.dp.toPx()
         val inset = 1.dp.toPx()
         listOf(4f, 8f, 12f).forEach { y ->
             val yPx = y.dp.toPx()
@@ -799,7 +799,7 @@ private fun LoadingStatus() {
         }
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Spinner(size = 14.dp, stroke = 1.5.dp, trackColor = Color(0x29FFFFFF))
+        Spinner(size = 14.dp, stroke = 2.dp, trackColor = Color(0x29FFFFFF))
         Text(
             if (waited >= 3) "仍在加载 · 已等待 $waited 秒" else "正在加载频道…",
             style = TriTvType.Caption.tabular(),

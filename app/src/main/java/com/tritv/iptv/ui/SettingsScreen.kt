@@ -233,7 +233,7 @@ private fun GuideCard(status: GuideStatus, onRefresh: () -> Unit, modifier: Modi
         Spacer(Modifier.height(4.dp))
         UtilityButton(onClick = { if (!status.loading) onRefresh() }) {
             if (status.loading) {
-                Spinner(size = 14.dp, stroke = 1.5.dp, color = LocalContentColor.current, trackColor = LocalContentColor.current.copy(alpha = 0.3f))
+                Spinner(size = 14.dp, stroke = 2.dp, color = LocalContentColor.current, trackColor = LocalContentColor.current.copy(alpha = 0.3f))
                 Text("正在刷新…", style = TriTvType.Caption)
             } else {
                 Text("立即刷新节目单", style = TriTvType.Caption)

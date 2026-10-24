@@ -119,7 +119,7 @@ fun IconSlot(icon: String?, slot: Dp, fontSize: TextUnit) {
 fun GroupCaption(group: String, style: TextStyle, color: Color) {
     val label = remember(group) { groupLabel(group) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (label.icon != null) IconSlot(label.icon, 16.dp, 13.sp)
+        if (label.icon != null) IconSlot(label.icon, 16.dp, 14.sp)
         Text(label.name, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -259,7 +259,7 @@ private enum class PillLabel { Idle, Busy, Done }
 fun CheckIcon(size: Dp = 16.dp, color: Color = TriTvColors.SkyBlue) {
     Canvas(Modifier.size(size)) {
         val w = this.size.width
-        val stroke = 2.5.dp.toPx()
+        val stroke = 2.dp.toPx()
         drawLine(color, Offset(w * 0.12f, w * 0.52f), Offset(w * 0.4f, w * 0.8f), stroke, StrokeCap.Round)
         drawLine(color, Offset(w * 0.4f, w * 0.8f), Offset(w * 0.9f, w * 0.25f), stroke, StrokeCap.Round)
     }
@@ -456,7 +456,7 @@ fun KeyCap(label: String) {
             .background(Color(0x2ED2D2D7), Radius.Small)
             .padding(horizontal = 6.dp),
     ) {
-        Text(label, style = TriTvType.Small.copy(fontSize = 11.sp, lineHeight = 11.sp))
+        Text(label, style = TriTvType.Small.copy(fontSize = 12.sp, lineHeight = 12.sp))
     }
 }
 
@@ -473,7 +473,7 @@ fun Dot(color: Color = TriTvColors.TextMuted) {
 @Composable
 fun Spinner(
     size: Dp = 40.dp,
-    stroke: Dp = 3.dp,
+    stroke: Dp = 4.dp,
     color: Color = TriTvColors.SkyBlue,
     trackColor: Color = Color(0x24FFFFFF),
     modifier: Modifier = Modifier,
