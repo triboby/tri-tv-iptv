@@ -53,4 +53,13 @@ class AdFilterTest {
         assertFalse(watch.check(11, listOf("b.ts", "c.ts", "d.ts")))
         assertTrue(watch.check(12, listOf("c.ts", "d.ts", "a.ts")))
     }
+
+    @Test
+    fun oldProgramDateTimeIsFrozen() {
+        val now = 1_761_300_000_000L // 2025-10-24
+        assertTrue(AdFilter.isFrozen("#EXTM3U\n#EXT-X-PROGRAM-DATE-TIME:2023-05-01T12:00:00.000+08:00\n#EXTINF:6,\na.ts\n", now))
+        assertFalse(AdFilter.isFrozen("#EXTM3U\n#EXT-X-PROGRAM-DATE-TIME:2025-10-24T10:00:00Z\n#EXTINF:6,\na.ts\n", now))
+        assertFalse(AdFilter.isFrozen("#EXTM3U\n#EXTINF:6,\na.ts\n", now))
+        assertFalse(AdFilter.isFrozen("#EXTM3U\n#EXT-X-PROGRAM-DATE-TIME:garbage\n", now))
+    }
 }

@@ -14,13 +14,38 @@ object AdFilter {
     val AD_URL_PATTERNS = listOf(
         "/applive/mkt.m3u8",
         "/appadhw/",
-        "//47.97.252.137:81/",
+        "//47.97.252.137",
     )
 
     /** A playlist that ends (VOD) and runs shorter than this is a clip on a loop, not a channel. */
     const val MAX_CLIP_SECONDS = 10 * 60
 
+    /** A live playlist whose clock is further behind than this is a frozen recording, not a channel. */
+    const val MAX_LAG_MS = 24 * 60 * 60_000L
+
+    /**
+     * Redirect servers send only some requests to the advert (from about one in ten to nearly
+     * all, by time of day), so a chain is resolved up to this many times before a line is
+     * taken for an advert.
+     */
+    const val AD_RESOLVE_TRIES = 3
+
     fun isAdUrl(url: String): Boolean = AD_URL_PATTERNS.any { url.contains(it, ignoreCase = true) }
+
+    /**
+     * Whether [playlist]'s first #EXT-X-PROGRAM-DATE-TIME lies more than [MAX_LAG_MS] before
+     * [nowMs]. Read without its zone, which moves it by hours at most.
+     */
+    fun isFrozen(playlist: String, nowMs: Long): Boolean {
+        val tag = playlist.lineSequence().map { it.trim() }.firstOrNull { it.startsWith(PDT) } ?: return false
+        val time = tag.removePrefix(PDT).take(19)
+        val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        val at = runCatching { format.parse(time)?.time }.getOrNull() ?: return false
+        return nowMs - at > MAX_LAG_MS
+    }
+
+    private const val PDT = "#EXT-X-PROGRAM-DATE-TIME:"
 
     /**
      * Whether one HLS media playlist already shows a loop: it ends after a short clip, or it

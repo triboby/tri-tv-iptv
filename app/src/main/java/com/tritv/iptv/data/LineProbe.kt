@@ -36,6 +36,7 @@ internal object LineProbe {
             val text = body.playlist ?: return if (body.html) Result.Dead else ok
             val master = isMaster(text)
             if (!master && AdFilter.isLoopPlaylist(text)) return Result.Ad
+            if (!master && AdFilter.isFrozen(text, System.currentTimeMillis())) return Result.Dead
             // An empty live playlist is still a working line; the next refresh will have segments.
             val next = nextUri(text) ?: return ok
             segment = !master
