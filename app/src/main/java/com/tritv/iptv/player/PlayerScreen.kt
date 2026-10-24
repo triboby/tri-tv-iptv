@@ -396,6 +396,8 @@ fun PlayerScreen(
                     )
                     useController = false
                     isFocusable = false
+                    // Keys are handled in Compose; nothing inside the view may take focus from the drawer.
+                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     setKeepContentOnPlayerReset(false)
                     // Live TV gets no remote input for long stretches; without this the TV's
