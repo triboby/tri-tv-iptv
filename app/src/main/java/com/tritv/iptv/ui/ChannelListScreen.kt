@@ -2,7 +2,6 @@ package com.tritv.iptv.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -203,11 +202,8 @@ fun ChannelListScreen(
                 }
             }
         } else {
-            val railWidth by animateDpAsState(
-                targetValue = if (groupsFocused) RailExpanded else RailCollapsed,
-                animationSpec = tween(200, easing = EnterEasing),
-                label = "rail",
-            )
+            // Snaps rather than animates: while the list slides sideways, Down presses find no row to go to.
+            val railWidth = if (groupsFocused) RailExpanded else RailCollapsed
             Row(
                 horizontalArrangement = Arrangement.spacedBy(DrawerGap),
                 modifier = Modifier

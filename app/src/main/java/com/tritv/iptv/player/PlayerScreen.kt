@@ -170,6 +170,9 @@ fun PlayerScreen(
     // Set when the viewer switched lines, so the line is remembered once it plays.
     var pickedByViewer by remember(channel) { mutableStateOf(false) }
     var buffering by remember { mutableStateOf(true) }
+    // Whether the current attempt has put a picture on screen. Some lines show their first frame
+    // well before the player reports ready; the picture is answer enough that the line is up.
+    var firstFrame by remember(channel) { mutableStateOf(false) }
     // Whether any line of this channel has shown a picture yet. After that, switching lines keeps
     // the last frame on screen (dimmed) instead of going black.
     var playedOnce by remember(channel) { mutableStateOf(false) }
@@ -188,6 +191,10 @@ fun PlayerScreen(
     // Keyed on channel so the listener sees this channel's attempt state.
     DisposableEffect(player, channel, lines) {
         val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                firstFrame = true
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY) {
@@ -250,6 +257,7 @@ fun PlayerScreen(
 
     LaunchedEffect(channel, attempt) {
         ready = false
+        firstFrame = false
         val source = lines[attempt.sourceIndex]
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(source.userAgent ?: DEFAULT_USER_AGENT)
@@ -275,7 +283,8 @@ fun PlayerScreen(
 
     // The loading ring stays up from the start of buffering until the line plays, whatever the info
     // bar does. It waits 0.4 s before appearing so a line that starts quickly does not flash it.
-    val loading = error == null && (!ready || buffering)
+    // Before the line is ready the ring goes as soon as a picture shows; after that it marks rebuffering.
+    val loading = error == null && (if (ready) buffering else !firstFrame)
     var showLoader by remember { mutableStateOf(false) }
     var loadingSince by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(loading, channel, attemptIndex) {
@@ -290,7 +299,7 @@ fun PlayerScreen(
         }
     }
     val dim by animateFloatAsState(
-        targetValue = if (playedOnce && !ready && error == null) SWITCH_DIM else 0f,
+        targetValue = if (playedOnce && !ready && !firstFrame && error == null) SWITCH_DIM else 0f,
         animationSpec = tween(200),
         label = "dim",
     )
@@ -601,7 +610,8 @@ fun PlayerScreen(
 
 /**
  * The playing channel while the drawer is open, in the bottom-right corner: number and logo (or
- * name until one loads) on the first line, line or error and the keys that leave the drawer below.
+ * name until one loads) on the first line, then the line and the keys that leave the drawer; an
+ * error takes its own line above the keys.
  * A fixed 320dp wide, so it does not jump about as the channel changes.
  */
 @Composable
@@ -626,16 +636,13 @@ private fun DrawerCard(channel: Channel, channelNumber: Int, status: String?, is
                 Text(ChannelCategory.label(channel.name), style = CardTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        // An error is too long to share a line with the keys, so it gets up to two lines of its own.
+        if (isError && status != null) {
+            Text(status, style = TriTvType.Caption, color = TriTvColors.Error, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (status != null) {
-                Text(
-                    status,
-                    style = TriTvType.Caption.tabular(),
-                    color = if (isError) TriTvColors.Error else TriTvColors.TextMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
+            if (!isError && status != null) {
+                Text(status, style = TriTvType.Caption.tabular(), color = TriTvColors.TextMuted, maxLines = 1, softWrap = false)
             }
             KeyHint("OK", "全屏")
             KeyHint("返回", "收起")
