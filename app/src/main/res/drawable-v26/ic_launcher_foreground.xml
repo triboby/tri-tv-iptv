@@ -1,51 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Tri TV mark: three stacked play triangles (teal, violet, blue). -->
+<!-- Tri TV mark: three stacked rounded play triangles (teal, violet, blue), smaller layers behind and to the left.
+     Golden-ratio construction: apex at H*phi/2, corner radius H/phi^4, layers shrink by phi^-1/5. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateX="51" android:translateY="54" android:scaleX="0.38" android:scaleY="0.38">
-        <group android:translateX="-18" android:scaleX="0.82" android:scaleY="0.82">
-            <path
-                android:fillAlpha="0.85"
-                android:pathData="M-38,-52 Q-46,-56 -46,-46 L-46,46 Q-46,56 -38,52 L50,6 Q58,0 50,-6 Z">
+    <group android:translateX="47.040" android:translateY="54.000" android:scaleX="0.32539" android:scaleY="0.32539">
+        <group android:translateX="-25.144" android:scaleX="0.82491" android:scaleY="0.82491">
+            <path android:pathData="M24.49,-39.87 L66.9,-13.65 A16.05,16.05 0 0 1 66.9,13.65 L24.49,39.87 A16.05,16.05 0 0 1 0,26.21 L0,-26.21 A16.05,16.05 0 0 1 24.49,-39.87 Z">
                 <aapt:attr name="android:fillColor">
-                    <gradient
-                        android:type="linear"
-                        android:startX="-46" android:startY="-56"
-                        android:endX="58" android:endY="56"
-                        android:startColor="#FF00E5C3"
-                        android:endColor="#FF1DE9B6" />
+                    <gradient android:type="linear" android:startX="0" android:startY="-42.26" android:endX="74.514" android:endY="42.26"
+                        android:startColor="#FF1FD1B2" android:endColor="#FF0FA896" />
                 </aapt:attr>
             </path>
         </group>
-        <group android:translateX="0" android:scaleX="0.9" android:scaleY="0.9">
-            <path
-                android:fillAlpha="0.85"
-                android:pathData="M-38,-52 Q-46,-56 -46,-46 L-46,46 Q-46,56 -38,52 L50,6 Q58,0 50,-6 Z">
+        <group android:translateX="-12.407" android:scaleX="0.90824" android:scaleY="0.90824">
+            <path android:pathData="M24.49,-39.87 L66.9,-13.65 A16.05,16.05 0 0 1 66.9,13.65 L24.49,39.87 A16.05,16.05 0 0 1 0,26.21 L0,-26.21 A16.05,16.05 0 0 1 24.49,-39.87 Z" android:strokeColor="#FF10151F" android:strokeWidth="4.046" android:strokeLineJoin="round" />
+            <path android:pathData="M24.49,-39.87 L66.9,-13.65 A16.05,16.05 0 0 1 66.9,13.65 L24.49,39.87 A16.05,16.05 0 0 1 0,26.21 L0,-26.21 A16.05,16.05 0 0 1 24.49,-39.87 Z">
                 <aapt:attr name="android:fillColor">
-                    <gradient
-                        android:type="linear"
-                        android:startX="-46" android:startY="-56"
-                        android:endX="58" android:endY="56"
-                        android:startColor="#FF7C4DFF"
-                        android:endColor="#FFB388FF" />
+                    <gradient android:type="linear" android:startX="0" android:startY="-42.26" android:endX="74.514" android:endY="42.26"
+                        android:startColor="#FF8A63FF" android:endColor="#FF6A3DF0" />
                 </aapt:attr>
             </path>
         </group>
-        <group android:translateX="18" android:scaleX="0.98" android:scaleY="0.98">
-            <path
-                android:fillAlpha="0.92"
-                android:pathData="M-38,-52 Q-46,-56 -46,-46 L-46,46 Q-46,56 -38,52 L50,6 Q58,0 50,-6 Z">
+        <group android:translateX="0.000" android:scaleX="1.00000" android:scaleY="1.00000">
+            <path android:pathData="M24.49,-39.87 L66.9,-13.65 A16.05,16.05 0 0 1 66.9,13.65 L24.49,39.87 A16.05,16.05 0 0 1 0,26.21 L0,-26.21 A16.05,16.05 0 0 1 24.49,-39.87 Z" android:strokeColor="#FF10151F" android:strokeWidth="3.675" android:strokeLineJoin="round" />
+            <path android:pathData="M24.49,-39.87 L66.9,-13.65 A16.05,16.05 0 0 1 66.9,13.65 L24.49,39.87 A16.05,16.05 0 0 1 0,26.21 L0,-26.21 A16.05,16.05 0 0 1 24.49,-39.87 Z">
                 <aapt:attr name="android:fillColor">
-                    <gradient
-                        android:type="linear"
-                        android:startX="-46" android:startY="-56"
-                        android:endX="58" android:endY="56"
-                        android:startColor="#FF4FC3F7"
-                        android:endColor="#FF2979FF" />
+                    <gradient android:type="linear" android:startX="0" android:startY="-42.26" android:endX="74.514" android:endY="42.26"
+                        android:startColor="#FF5AB8FF" android:endColor="#FF1F6FFF" />
                 </aapt:attr>
             </path>
         </group>

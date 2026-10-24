@@ -32,8 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -41,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -72,31 +75,45 @@ object Radius {
 /** Horizontal safe margin for TV overscan. */
 val ScreenMargin = 48.dp
 
+// One rounded play triangle: left edge 110 high, apex at 110 * phi / 2, corner radius 110 / phi^4.
 private val logoPath = PathParser()
-    .parsePathString("M-38,-52 Q-46,-56 -46,-46 L-46,46 Q-46,56 -38,52 L50,6 Q58,0 50,-6 Z")
+    .parsePathString(
+        "M24.49,-39.87 L66.9,-13.65 A16.05,16.05 0 0 1 66.9,13.65 L24.49,39.87 " +
+            "A16.05,16.05 0 0 1 0,26.21 L0,-26.21 A16.05,16.05 0 0 1 24.49,-39.87 Z",
+    )
     .toPath()
+
+/** Back to front: left offset, scale (each layer shrinks by phi^-1/5), gradient. */
+private val logoLayers = listOf(
+    Triple(-25.14f, 0.8249f, listOf(Color(0xFF1FD1B2), Color(0xFF0FA896))),
+    Triple(-12.41f, 0.9082f, listOf(Color(0xFF8A63FF), Color(0xFF6A3DF0))),
+    Triple(0f, 1f, listOf(Color(0xFF5AB8FF), Color(0xFF1F6FFF))),
+)
 
 /** The Tri TV mark: three stacked play triangles, as in the launcher icon. */
 @Composable
 fun LogoMark(size: Dp, modifier: Modifier = Modifier) {
-    Canvas(modifier.size(size)) {
-        // Same shapes as ic_launcher_foreground, scaled to fill the box: the three layers span about
-        // 130 x 110 units, centred 9.5 units right of the path origin.
-        val layers = listOf(
-            Triple(-18f, 0.82f, listOf(Color(0xFF00E5C3), Color(0xFF1DE9B6)) to 0.85f),
-            Triple(0f, 0.9f, listOf(Color(0xFF7C4DFF), Color(0xFFB388FF)) to 0.85f),
-            Triple(18f, 0.98f, listOf(Color(0xFF4FC3F7), Color(0xFF2979FF)) to 0.92f),
-        )
+    // Offscreen so the gap around each front layer can be cut out of the layers behind it.
+    Canvas(modifier.size(size).graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
+        // Same shapes as ic_launcher_foreground, scaled to fill the box: the layers span about 100 x 85 units,
+        // centred 21.4 units right of the front triangle's left edge.
         translate(left = center.x, top = center.y) {
-            scale(this.size.minDimension / 132f, pivot = Offset.Zero) {
-                for ((dx, s, paint) in layers) {
-                    val (stops, alpha) = paint
-                    translate(left = dx - 9.5f) {
+            scale(this.size.minDimension / 100f, pivot = Offset.Zero) {
+                for ((i, layer) in logoLayers.withIndex()) {
+                    val (dx, s, stops) = layer
+                    translate(left = dx - 21.4f) {
                         scale(s, pivot = Offset.Zero) {
+                            if (i > 0) {
+                                drawPath(
+                                    logoPath,
+                                    Color.Black,
+                                    style = Stroke(width = 3.7f / s, join = StrokeJoin.Round),
+                                    blendMode = BlendMode.Clear,
+                                )
+                            }
                             drawPath(
                                 logoPath,
-                                Brush.linearGradient(stops, start = Offset(-46f, -56f), end = Offset(58f, 56f)),
-                                alpha = alpha,
+                                Brush.linearGradient(stops, start = Offset(0f, -42.26f), end = Offset(74.51f, 42.26f)),
                             )
                         }
                     }
