@@ -162,8 +162,10 @@ fun ChannelListScreen(
     }
 
     // Resting on a channel plays it behind the drawer; moving through the list starts nothing.
-    LaunchedEffect(groupsFocused, moving) {
-        if (groupsFocused || moving != null) return@LaunchedEffect
+    // Keyed on the channels too: the first list arrives after this has started, while focus still
+    // reads 0 from before it, which would otherwise play channel 1 a second later.
+    LaunchedEffect(groupsFocused, moving, state.channels) {
+        if (groupsFocused || moving != null || state.channels.isEmpty()) return@LaunchedEffect
         snapshotFlow { focusedState.intValue }.collectLatest { index ->
             delay(PREVIEW_DELAY_MS)
             onPreview(index)

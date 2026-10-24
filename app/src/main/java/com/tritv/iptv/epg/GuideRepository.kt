@@ -55,6 +55,16 @@ class GuideRepository(context: Context) {
             GuideData(programmes, downloadedAt)
         }
 
+    /**
+     * What the last parse of the cached file found for [channels], however old, or null when there
+     * is none; reads a few hundred KB, no parsing.
+     */
+    suspend fun cached(url: String, channels: List<Channel>): GuideData? = withContext(Dispatchers.IO) {
+        val downloadedAt = prefs.getLong(KEY_TIME, 0L)
+        if (!cache.exists() || prefs.getString(KEY_URL, null) != url) return@withContext null
+        readParsed(signature(url, downloadedAt, channels))?.let { GuideData(it, downloadedAt) }
+    }
+
     /** What a parse depends on: the file (by address and download time) and what channels are matched by. */
     private fun signature(url: String, downloadedAt: Long, channels: List<Channel>): String {
         val names = channels.joinToString("\n") { c ->

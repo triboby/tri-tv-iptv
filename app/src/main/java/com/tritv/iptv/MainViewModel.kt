@@ -12,6 +12,7 @@ import com.tritv.iptv.data.PlaylistEntry
 import com.tritv.iptv.data.PlaylistRepository
 import com.tritv.iptv.data.guideErrorMessage
 import com.tritv.iptv.data.loadErrorMessage
+import com.tritv.iptv.epg.GuideData
 import com.tritv.iptv.epg.GuideRepository
 import com.tritv.iptv.epg.Programme
 import com.tritv.iptv.epg.resolveGuideUrl
@@ -131,6 +132,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             guideUrl = repo.guideUrl.orEmpty(),
             favorites = repo.favorites,
             showSettings = repo.savedUrl.isNullOrBlank(),
+            // The skeleton, not "no channels", until the cached or downloaded list is in.
+            loading = !repo.savedUrl.isNullOrBlank(),
         ),
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -297,10 +300,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(guideStatus = (it.guideStatus ?: GuideStatus()).copy(loading = true, error = null, fromPlaylist = own == null, url = url))
         }
         guideJob = viewModelScope.launch {
-            startupSettled()
+            fun show(data: GuideData) = _state.update {
+                it.copy(
+                    programmes = data.programmes,
+                    guideStatus = GuideStatus(
+                        downloadedAt = data.downloadedAt,
+                        matched = channels.count { c -> c.stableKey in data.programmes },
+                        total = channels.size,
+                        fromPlaylist = own == null,
+                        url = url,
+                    ),
+                )
+            }
             var forceNext = force
             // When what is shown should be fetched again; null until the first load.
             var dueAt: Long? = null
+            // What the last start parsed shows at once; only fetching and parsing anew waits.
+            if (!force) {
+                guideRepo.cached(url, channels)?.let { data ->
+                    show(data)
+                    dueAt = data.downloadedAt + GuideRepository.MAX_AGE_MS
+                }
+            }
+            startupSettled()
             // Waits while the app is off screen; a refresh missed then runs on return.
             foreground.collectLatest { visible ->
                 if (!visible) return@collectLatest
@@ -310,20 +332,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val result = runCatching { guideRepo.load(url, channels, forceNext) }
                     forceNext = false
                     result
-                        .onSuccess { data ->
-                            _state.update {
-                                it.copy(
-                                    programmes = data.programmes,
-                                    guideStatus = GuideStatus(
-                                        downloadedAt = data.downloadedAt,
-                                        matched = channels.count { c -> c.stableKey in data.programmes },
-                                        total = channels.size,
-                                        fromPlaylist = own == null,
-                                        url = url,
-                                    ),
-                                )
-                            }
-                        }
+                        .onSuccess { data -> show(data) }
                         .onFailure { e ->
                             _state.update {
                                 it.copy(guideStatus = GuideStatus(error = guideErrorMessage(e), fromPlaylist = own == null, url = url))
