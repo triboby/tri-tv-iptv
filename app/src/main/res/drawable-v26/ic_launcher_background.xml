@@ -12,8 +12,8 @@
                 android:type="linear"
                 android:startX="0" android:startY="0"
                 android:endX="108" android:endY="108"
-                android:startColor="#FF1B2433"
-                android:endColor="#FF0D1320" />
+                android:startColor="#FF141B28"
+                android:endColor="#FF0B0F18" />
         </aapt:attr>
     </path>
 </vector>
