@@ -1,0 +1,4 @@
+# Precompiled at install: the whole app is small, and all of it runs at start-up or while
+# moving through the drawer. Compose, Media3 and the other libraries bring their own profiles.
+HSPLcom/tritv/iptv/**->**(**)**
+Lcom/tritv/iptv/**;

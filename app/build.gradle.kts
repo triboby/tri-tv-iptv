@@ -14,10 +14,17 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // Every Android TV and box is ARM; leaving out the x86 copies of the FFmpeg libraries
+        // keeps the APK smaller. The Apple-silicon emulator is arm64 too.
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
     }
 
     // Shared debug key so every CI build installs over the previous one (keeps the saved playlist).
-    // Debug-only; never use it for a release build.
+    // The release build is signed with it too, so it installs over a debug build and back. Only
+    // fit for sideloading; a store build would need its own key.
     signingConfigs {
         getByName("debug") {
             storeFile = file("debug.keystore")
@@ -31,8 +38,12 @@ android {
         debug {
             signingConfig = signingConfigs.getByName("debug")
         }
+        // The build to put on a TV: not debuggable, so ART compiles it fully, and shrunk and
+        // optimised by R8, which Compose relies on for its speed.
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -70,6 +81,10 @@ dependencies {
     implementation(libs.media3.ui)
 
     implementation(libs.kotlinx.coroutines.android)
+
+    // Installs the baseline profiles (Compose's own and src/main/baseline-prof.txt) on sideloaded
+    // installs, so start-up and the drawer run precompiled instead of interpreted.
+    implementation(libs.androidx.profileinstaller)
 
     testImplementation(libs.junit)
 }
