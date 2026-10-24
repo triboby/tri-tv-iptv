@@ -116,5 +116,5 @@ internal object LineProbe {
     private const val HEAD_BYTES = 16
     private const val SEGMENT_BYTES = 1024
     private const val MAX_PLAYLIST_BYTES = 256 * 1024
-    private const val USER_AGENT = "TriTV/1.0 (Linux; Android) ExoPlayer"
+    private const val USER_AGENT = "tri.iptv/1.0 (Linux; Android) ExoPlayer"
 }

@@ -198,6 +198,6 @@ class LineRepository(context: Context) {
         private const val PROBE_TIMEOUT_MS = 3_000
         /** Most a whole probe (playlist, variant, segment, redirects) may take. */
         private const val PROBE_DEADLINE_MS = 6_000L
-        private const val TAG = "TriTV-Lines"
+        private const val TAG = "tri.iptv-Lines"
     }
 }

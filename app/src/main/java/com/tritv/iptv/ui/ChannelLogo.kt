@@ -38,7 +38,7 @@ import java.security.MessageDigest
  */
 object LogoCache {
 
-    private const val TAG = "TriTV-Logos"
+    private const val TAG = "tri.iptv-Logos"
     private const val MAX_BYTES = 512 * 1024
 
     /** Logos are drawn 44dp tall; kept a little taller so they stay sharp. */
