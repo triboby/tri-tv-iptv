@@ -264,7 +264,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         lines.pick(channel, entry)
     }
 
-    fun openSettings() = _state.update { it.copy(showSettings = true, showGuide = false, error = null) }
+    // Opening the guide or the source page puts focus back on the playing channel, so coming back
+    // to the drawer lands on it instead of on a row from earlier, which would then start playing.
+    fun openSettings() = _state.update {
+        it.copy(showSettings = true, showGuide = false, error = null, focusIndex = it.playingIndex ?: it.focusIndex)
+    }
 
     /** Leaves the source page; stays on it while there are no channels to go back to. */
     fun closeSettings(): Boolean {
@@ -281,7 +285,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
-    fun openGuide() = _state.update { it.copy(showGuide = true) }
+    fun openGuide() = _state.update { it.copy(showGuide = true, focusIndex = it.playingIndex ?: it.focusIndex) }
 
     fun closeGuide() = _state.update { it.copy(showGuide = false) }
 
